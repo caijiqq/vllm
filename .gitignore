@@ -251,3 +251,12 @@ vllm/grpc/vllm_engine_pb2.pyi
 
 # Ignore generated cpu headers 
 csrc/cpu/cpu_attn_dispatch_generated.h
+
+# iHC lab: generated validation caches and compiled artifacts. These are
+# per-run workspace dumps (CUDA/Triton/Inductor/FlashInfer caches, cubins),
+# never sources of truth, and they are large enough to bloat a clone.
+/lab/ihc_fusion/results/**/cache/
+/lab/ihc_fusion/results/**/.cache/
+/lab/ihc_fusion/results/**/*.cubin
+/lab/ihc_fusion/results/**/*.o
+/lab/ihc_fusion/results/**/*.sass
