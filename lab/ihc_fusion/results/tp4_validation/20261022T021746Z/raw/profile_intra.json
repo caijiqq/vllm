@@ -1,0 +1,127 @@
+{
+  "tokens": [
+    93652
+  ],
+  "workers": [
+    {
+      "rank": 0,
+      "trace": "intra_rank0.trace.json",
+      "observations": [
+        {
+          "tag": "pre/attention/0",
+          "shape": [
+            8192,
+            4,
+            6144
+          ]
+        },
+        {
+          "tag": "pre/attention/1",
+          "shape": [
+            8192,
+            4,
+            6144
+          ]
+        },
+        {
+          "tag": "pre/attention/2",
+          "shape": [
+            8192,
+            4,
+            6144
+          ]
+        }
+      ]
+    },
+    {
+      "rank": 1,
+      "trace": "intra_rank1.trace.json",
+      "observations": [
+        {
+          "tag": "pre/attention/0",
+          "shape": [
+            8192,
+            4,
+            6144
+          ]
+        },
+        {
+          "tag": "pre/attention/1",
+          "shape": [
+            8192,
+            4,
+            6144
+          ]
+        },
+        {
+          "tag": "pre/attention/2",
+          "shape": [
+            8192,
+            4,
+            6144
+          ]
+        }
+      ]
+    },
+    {
+      "rank": 2,
+      "trace": "intra_rank2.trace.json",
+      "observations": [
+        {
+          "tag": "pre/attention/0",
+          "shape": [
+            8192,
+            4,
+            6144
+          ]
+        },
+        {
+          "tag": "pre/attention/1",
+          "shape": [
+            8192,
+            4,
+            6144
+          ]
+        },
+        {
+          "tag": "pre/attention/2",
+          "shape": [
+            8192,
+            4,
+            6144
+          ]
+        }
+      ]
+    },
+    {
+      "rank": 3,
+      "trace": "intra_rank3.trace.json",
+      "observations": [
+        {
+          "tag": "pre/attention/0",
+          "shape": [
+            8192,
+            4,
+            6144
+          ]
+        },
+        {
+          "tag": "pre/attention/1",
+          "shape": [
+            8192,
+            4,
+            6144
+          ]
+        },
+        {
+          "tag": "pre/attention/2",
+          "shape": [
+            8192,
+            4,
+            6144
+          ]
+        }
+      ]
+    }
+  ]
+}

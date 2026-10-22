@@ -1,0 +1,5 @@
+.venv/
+.cache/
+!h100_benchmark.csv
+!generated/
+!generated/*.ptx

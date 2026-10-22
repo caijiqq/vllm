@@ -1,0 +1,4 @@
+128 {'official_us': 25.713, 'official_hot_us': 21.747, 'single_us': 28.342, 'single_hot_us': 18.085, 'two_us': 21.321, 'two_hot_us': 19.639}
+256 {'official_us': 43.269, 'official_hot_us': 40.414, 'single_us': 37.25, 'single_hot_us': 27.051, 'two_us': 36.563, 'two_hot_us': 35.506}
+512 {'official_us': 81.605, 'official_hot_us': 80.671, 'single_us': 73.543, 'single_hot_us': 69.428, 'two_us': 69.655, 'two_hot_us': 69.619}
+768 {'official_us': 120.325, 'official_hot_us': 120.119, 'single_us': 82.848, 'single_hot_us': 83.005, 'two_us': 103.547, 'two_hot_us': 103.374}

@@ -1,0 +1,127 @@
+{
+  "tokens": [
+    93652
+  ],
+  "workers": [
+    {
+      "rank": 0,
+      "trace": "cross_rank0.trace.json",
+      "observations": [
+        {
+          "tag": "pre/attention/0",
+          "shape": [
+            8192,
+            4,
+            6144
+          ]
+        },
+        {
+          "tag": "layer/0/pending",
+          "shape": [
+            8192,
+            4,
+            6144
+          ]
+        },
+        {
+          "tag": "layer/1/pending",
+          "shape": [
+            8192,
+            4,
+            6144
+          ]
+        }
+      ]
+    },
+    {
+      "rank": 1,
+      "trace": "cross_rank1.trace.json",
+      "observations": [
+        {
+          "tag": "pre/attention/0",
+          "shape": [
+            8192,
+            4,
+            6144
+          ]
+        },
+        {
+          "tag": "layer/0/pending",
+          "shape": [
+            8192,
+            4,
+            6144
+          ]
+        },
+        {
+          "tag": "layer/1/pending",
+          "shape": [
+            8192,
+            4,
+            6144
+          ]
+        }
+      ]
+    },
+    {
+      "rank": 2,
+      "trace": "cross_rank2.trace.json",
+      "observations": [
+        {
+          "tag": "pre/attention/0",
+          "shape": [
+            8192,
+            4,
+            6144
+          ]
+        },
+        {
+          "tag": "layer/0/pending",
+          "shape": [
+            8192,
+            4,
+            6144
+          ]
+        },
+        {
+          "tag": "layer/1/pending",
+          "shape": [
+            8192,
+            4,
+            6144
+          ]
+        }
+      ]
+    },
+    {
+      "rank": 3,
+      "trace": "cross_rank3.trace.json",
+      "observations": [
+        {
+          "tag": "pre/attention/0",
+          "shape": [
+            8192,
+            4,
+            6144
+          ]
+        },
+        {
+          "tag": "layer/0/pending",
+          "shape": [
+            8192,
+            4,
+            6144
+          ]
+        },
+        {
+          "tag": "layer/1/pending",
+          "shape": [
+            8192,
+            4,
+            6144
+          ]
+        }
+      ]
+    }
+  ]
+}

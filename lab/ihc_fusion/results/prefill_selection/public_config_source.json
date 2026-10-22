@@ -1,0 +1,31 @@
+{
+  "url": "https://huggingface.co/tencent/Hy4-preview/raw/main/config.json",
+  "headers": {
+    "Content-Type": "text/plain; charset=utf-8",
+    "Content-Length": "6315",
+    "Connection": "close",
+    "Date": "Wed, 21 Oct 2026 07:06:05 GMT",
+    "ETag": "\"97057c05738cb5cb99b014eb6d9547308a44bebe\"",
+    "X-Powered-By": "huggingface-moon",
+    "X-Request-Id": "Root=1-6ad8645d-3005010f6d1f6d8a14b61887",
+    "RateLimit": "\"resolvers\";r=2999;t=23",
+    "RateLimit-Policy": "\"fixed window\";\"resolvers\";q=3000;w=300",
+    "cross-origin-opener-policy": "same-origin",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Access-Control-Max-Age": "86400",
+    "Access-Control-Allow-Origin": "https://huggingface.co",
+    "Vary": "Origin",
+    "Access-Control-Expose-Headers": "X-Repo-Commit,X-Request-Id,X-Error-Code,X-Error-Message,X-Total-Count,ETag,Link,Accept-Ranges,Content-Range,X-Linked-Size,X-Linked-ETag,X-Xet-Hash",
+    "X-Repo-Commit": "705d81ee51566a186d645b74c974d642ef2828fe",
+    "Accept-Ranges": "bytes",
+    "Content-Disposition": "inline; filename*=UTF-8''config.json; filename=\"config.json\";",
+    "Content-Security-Policy": "default-src 'none'; sandbox",
+    "X-Cache": "Miss from cloudfront",
+    "Via": "1.1 322fd7826352d6d295b7196056be4ec2.cloudfront.net (CloudFront)",
+    "X-Amz-Cf-Pop": "SIN2-P7",
+    "Alt-Svc": "h3=\":443\"; ma=86400",
+    "X-Amz-Cf-Id": "4ovLTZ36Lo9b4zHhcxq48e0Nv4_nKM7b1eIZhHq-ohWK7PL_lnvUGA==",
+    "Strict-Transport-Security": "max-age=31536000"
+  },
+  "sha256": "a2c0dc5ec7c5b85b83c5514d1f923dcaeb3510ac0aa0816c3c26a2418ee80f8d"
+}

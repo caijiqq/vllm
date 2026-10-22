@@ -1,0 +1,56 @@
+{
+  "mode": "cross",
+  "tokens": [
+    93652
+  ],
+  "workers": [
+    {
+      "rank": 0,
+      "records": [
+        {
+          "ms": 41.88614273071289,
+          "shape": [
+            8192
+          ]
+        }
+      ],
+      "finite": true
+    },
+    {
+      "rank": 1,
+      "records": [
+        {
+          "ms": 41.90991973876953,
+          "shape": [
+            8192
+          ]
+        }
+      ],
+      "finite": true
+    },
+    {
+      "rank": 2,
+      "records": [
+        {
+          "ms": 41.88595199584961,
+          "shape": [
+            8192
+          ]
+        }
+      ],
+      "finite": true
+    },
+    {
+      "rank": 3,
+      "records": [
+        {
+          "ms": 41.850494384765625,
+          "shape": [
+            8192
+          ]
+        }
+      ],
+      "finite": true
+    }
+  ]
+}

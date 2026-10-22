@@ -1,0 +1,9 @@
+64 {'official_us': 16.463, 'official_hot_us': 13.316, 'single_us': 26.505, 'single_hot_us': 17.847, 'two_us': 13.114, 'two_hot_us': 11.607}
+128 {'official_us': 25.811, 'official_hot_us': 21.726, 'single_us': 28.335, 'single_hot_us': 18.064, 'two_us': 21.318, 'two_hot_us': 19.634}
+256 {'official_us': 43.31, 'official_hot_us': 40.329, 'single_us': 37.172, 'single_hot_us': 25.337, 'two_us': 36.517, 'two_hot_us': 35.335}
+512 {'official_us': 81.682, 'official_hot_us': 80.703, 'single_us': 73.568, 'single_hot_us': 69.67, 'two_us': 69.617, 'two_hot_us': 69.623}
+768 {'official_us': 120.266, 'official_hot_us': 120.496, 'single_us': 82.815, 'single_hot_us': 82.655, 'two_us': 103.551, 'two_hot_us': 103.481}
+1024 {'official_us': 161.298, 'official_hot_us': 161.344, 'single_us': 119.496, 'single_hot_us': 119.122, 'two_us': 137.438, 'two_hot_us': 137.386}
+2048 {'official_us': 323.815, 'official_hot_us': 323.611, 'single_us': 234.502, 'single_hot_us': 231.002, 'two_us': 269.289, 'two_hot_us': 269.391}
+4096 {'official_us': 651.667, 'official_hot_us': 651.342, 'single_us': 436.172, 'single_hot_us': 436.087, 'two_us': 534.694, 'two_hot_us': 534.854}
+8192 {'official_us': 1299.924, 'official_hot_us': 1300.031, 'single_us': 848.939, 'single_hot_us': 849.245, 'two_us': 1062.789, 'two_hot_us': 1062.948}

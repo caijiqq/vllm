@@ -1,0 +1,221 @@
+[
+  {
+    "mode": "original",
+    "workers": [
+      {
+        "rank": 0,
+        "flags": [
+          {
+            "intra": false,
+            "cross": false
+          },
+          {
+            "intra": false,
+            "cross": false
+          },
+          {
+            "intra": false,
+            "cross": false
+          }
+        ]
+      },
+      {
+        "rank": 1,
+        "flags": [
+          {
+            "intra": false,
+            "cross": false
+          },
+          {
+            "intra": false,
+            "cross": false
+          },
+          {
+            "intra": false,
+            "cross": false
+          }
+        ]
+      },
+      {
+        "rank": 2,
+        "flags": [
+          {
+            "intra": false,
+            "cross": false
+          },
+          {
+            "intra": false,
+            "cross": false
+          },
+          {
+            "intra": false,
+            "cross": false
+          }
+        ]
+      },
+      {
+        "rank": 3,
+        "flags": [
+          {
+            "intra": false,
+            "cross": false
+          },
+          {
+            "intra": false,
+            "cross": false
+          },
+          {
+            "intra": false,
+            "cross": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "intra",
+    "workers": [
+      {
+        "rank": 0,
+        "flags": [
+          {
+            "intra": true,
+            "cross": false
+          },
+          {
+            "intra": true,
+            "cross": false
+          },
+          {
+            "intra": true,
+            "cross": false
+          }
+        ]
+      },
+      {
+        "rank": 1,
+        "flags": [
+          {
+            "intra": true,
+            "cross": false
+          },
+          {
+            "intra": true,
+            "cross": false
+          },
+          {
+            "intra": true,
+            "cross": false
+          }
+        ]
+      },
+      {
+        "rank": 2,
+        "flags": [
+          {
+            "intra": true,
+            "cross": false
+          },
+          {
+            "intra": true,
+            "cross": false
+          },
+          {
+            "intra": true,
+            "cross": false
+          }
+        ]
+      },
+      {
+        "rank": 3,
+        "flags": [
+          {
+            "intra": true,
+            "cross": false
+          },
+          {
+            "intra": true,
+            "cross": false
+          },
+          {
+            "intra": true,
+            "cross": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mode": "cross",
+    "workers": [
+      {
+        "rank": 0,
+        "flags": [
+          {
+            "intra": true,
+            "cross": true
+          },
+          {
+            "intra": true,
+            "cross": true
+          },
+          {
+            "intra": true,
+            "cross": false
+          }
+        ]
+      },
+      {
+        "rank": 1,
+        "flags": [
+          {
+            "intra": true,
+            "cross": true
+          },
+          {
+            "intra": true,
+            "cross": true
+          },
+          {
+            "intra": true,
+            "cross": false
+          }
+        ]
+      },
+      {
+        "rank": 2,
+        "flags": [
+          {
+            "intra": true,
+            "cross": true
+          },
+          {
+            "intra": true,
+            "cross": true
+          },
+          {
+            "intra": true,
+            "cross": false
+          }
+        ]
+      },
+      {
+        "rank": 3,
+        "flags": [
+          {
+            "intra": true,
+            "cross": true
+          },
+          {
+            "intra": true,
+            "cross": true
+          },
+          {
+            "intra": true,
+            "cross": false
+          }
+        ]
+      }
+    ]
+  }
+]

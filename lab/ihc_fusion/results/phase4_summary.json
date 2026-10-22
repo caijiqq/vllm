@@ -1,0 +1,92 @@
+{
+  "torch.float32": {
+    "fused_vs_golden": {
+      "output": {
+        "max_abs": 0.0001220703125,
+        "relative_l2": 2.395789733603559e-07
+      },
+      "residual": {
+        "max_abs": 0.0,
+        "relative_l2": 0.0
+      },
+      "post_gates": {
+        "max_abs": 2.384185791015625e-06,
+        "relative_l2": 4.771277883566005e-07
+      }
+    },
+    "fused_vs_official": {
+      "output": {
+        "max_abs": 0.0001220703125,
+        "relative_l2": 4.18093093156793e-07
+      },
+      "residual": {
+        "max_abs": 0.0,
+        "relative_l2": 0.0
+      },
+      "post_gates": {
+        "max_abs": 1.4901161193847656e-06,
+        "relative_l2": 2.4453956072280417e-07
+      }
+    }
+  },
+  "torch.bfloat16": {
+    "fused_vs_golden": {
+      "output": {
+        "max_abs": 0.0625,
+        "relative_l2": 2.8167643113392367e-05
+      },
+      "residual": {
+        "max_abs": 0.0,
+        "relative_l2": 0.0
+      },
+      "post_gates": {
+        "max_abs": 2.4437904357910156e-06,
+        "relative_l2": 3.8816779478609444e-07
+      }
+    },
+    "fused_vs_official": {
+      "output": {
+        "max_abs": 0.03125,
+        "relative_l2": 1.686386816153799e-05
+      },
+      "residual": {
+        "max_abs": 0.0,
+        "relative_l2": 0.0
+      },
+      "post_gates": {
+        "max_abs": 8.344650268554688e-07,
+        "relative_l2": 1.5632697087183197e-07
+      }
+    }
+  },
+  "torch.float16": {
+    "fused_vs_golden": {
+      "output": {
+        "max_abs": 0.0078125,
+        "relative_l2": 1.5205997655662788e-05
+      },
+      "residual": {
+        "max_abs": 0.0,
+        "relative_l2": 0.0
+      },
+      "post_gates": {
+        "max_abs": 8.940696716308594e-07,
+        "relative_l2": 2.168356817044664e-07
+      }
+    },
+    "fused_vs_official": {
+      "output": {
+        "max_abs": 0.0078125,
+        "relative_l2": 5.895915699858733e-06
+      },
+      "residual": {
+        "max_abs": 0.0,
+        "relative_l2": 0.0
+      },
+      "post_gates": {
+        "max_abs": 1.3709068298339844e-06,
+        "relative_l2": 2.0967586135485016e-07
+      }
+    }
+  }
+}

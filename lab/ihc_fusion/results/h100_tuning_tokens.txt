@@ -1,0 +1,13 @@
+CUDA Events + CUDA Graph, cold L2 rotating buffers (CUPTI absent)
+bfloat16 N=   8 D=4096 warps=4       baseline=9.345us fused=21.001us speedup=0.445
+bfloat16 N=   8 D=4096 warps=16      baseline=9.345us fused=13.816us speedup=0.676
+bfloat16 N=  32 D=4096 warps=4       baseline=10.648us fused=20.542us speedup=0.518
+bfloat16 N=  32 D=4096 warps=16      baseline=10.648us fused=14.292us speedup=0.745
+bfloat16 N= 128 D=4096 warps=4       baseline=19.369us fused=21.901us speedup=0.884
+bfloat16 N= 128 D=4096 warps=16      baseline=19.369us fused=15.735us speedup=1.231
+bfloat16 N=   8 D=7168 warps=4       baseline=9.636us fused=35.808us speedup=0.269
+bfloat16 N=   8 D=7168 warps=16      baseline=9.636us fused=29.461us speedup=0.327
+bfloat16 N=  32 D=7168 warps=4       baseline=12.710us fused=35.344us speedup=0.360
+bfloat16 N=  32 D=7168 warps=16      baseline=12.710us fused=29.236us speedup=0.435
+bfloat16 N= 128 D=7168 warps=4       baseline=28.860us fused=37.526us speedup=0.769
+bfloat16 N= 128 D=7168 warps=16      baseline=28.860us fused=32.413us speedup=0.890

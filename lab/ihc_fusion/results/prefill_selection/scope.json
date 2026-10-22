@@ -1,0 +1,10 @@
+{
+  "preexisting_files_checked": 94,
+  "preexisting_changed": [],
+  "tracked_diff_unchanged": true,
+  "new_sources": {
+    "lab/ihc_fusion/benchmarks/bench_prefill_selection.py": "215b15c2c137cdf8a6125a97603543968089c253f2d69a622490303fa5f97f5a",
+    "lab/ihc_fusion/tests/test_prefill_workload.py": "da50e0ff938ccf964e067263ee8b451ce754611537a4e8ab8900364bc5281ca9"
+  },
+  "status": " M lab/ihc_fusion/benchmarks/bench_decode_two_stage.py\n?? lab/ihc_fusion/benchmarks/bench_prefill_selection.py\n?? lab/ihc_fusion/results/prefill_6144/h100_6144.json\n?? lab/ihc_fusion/results/prefill_selection/REPORT.md\n?? lab/ihc_fusion/results/prefill_selection/before.json\n?? lab/ihc_fusion/results/prefill_selection/h100_6144.json\n?? lab/ihc_fusion/results/prefill_selection/h100_6144.txt\n?? lab/ihc_fusion/results/prefill_selection/h100_transition_repeat.json\n?? lab/ihc_fusion/results/prefill_selection/h100_transition_repeat.txt\n?? lab/ihc_fusion/results/prefill_selection/initial.diff\n?? lab/ihc_fusion/results/prefill_selection/lint.txt\n?? lab/ihc_fusion/results/prefill_selection/new_code.patch\n?? lab/ihc_fusion/results/prefill_selection/public_config.json\n?? lab/ihc_fusion/results/prefill_selection/public_config_source.json\n?? lab/ihc_fusion/results/prefill_selection/pytest.txt\n?? lab/ihc_fusion/tests/test_prefill_workload.py\n"
+}

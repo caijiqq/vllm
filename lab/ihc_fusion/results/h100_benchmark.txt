@@ -1,0 +1,37 @@
+CUDA Events + CUDA Graph, cold L2 rotating buffers (CUPTI absent)
+float32  N=   1 D=4096 warps=default baseline=9.260us fused=13.644us speedup=0.679
+float32  N=   8 D=4096 warps=default baseline=9.835us fused=13.755us speedup=0.715
+float32  N=  32 D=4096 warps=default baseline=11.559us fused=14.679us speedup=0.787
+float32  N= 128 D=4096 warps=default baseline=23.059us fused=17.843us speedup=1.292
+float32  N=1024 D=4096 warps=default baseline=149.325us fused=130.125us speedup=1.148
+float32  N=4096 D=4096 warps=default baseline=593.205us fused=491.659us speedup=1.207
+float32  N=   1 D=7168 warps=default baseline=9.256us fused=27.025us speedup=0.342
+float32  N=   8 D=7168 warps=default baseline=9.939us fused=26.950us speedup=0.369
+float32  N=  32 D=7168 warps=default baseline=13.930us fused=28.265us speedup=0.493
+float32  N= 128 D=7168 warps=default baseline=34.814us fused=33.901us speedup=1.027
+float32  N=1024 D=7168 warps=default baseline=261.384us fused=254.416us speedup=1.027
+float32  N=4096 D=7168 warps=default baseline=1040.705us fused=1001.896us speedup=1.039
+bfloat16 N=   1 D=4096 warps=default baseline=8.919us fused=13.944us speedup=0.640
+bfloat16 N=   8 D=4096 warps=default baseline=9.340us fused=13.828us speedup=0.675
+bfloat16 N=  32 D=4096 warps=default baseline=10.628us fused=14.295us speedup=0.743
+bfloat16 N= 128 D=4096 warps=default baseline=19.357us fused=15.727us speedup=1.231
+bfloat16 N=1024 D=4096 warps=default baseline=106.217us fused=78.458us speedup=1.354
+bfloat16 N=4096 D=4096 warps=default baseline=433.473us fused=288.216us speedup=1.504
+bfloat16 N=   1 D=7168 warps=default baseline=9.142us fused=31.423us speedup=0.291
+bfloat16 N=   8 D=7168 warps=default baseline=9.625us fused=29.450us speedup=0.327
+bfloat16 N=  32 D=7168 warps=default baseline=12.700us fused=29.250us speedup=0.434
+bfloat16 N= 128 D=7168 warps=default baseline=28.857us fused=32.335us speedup=0.892
+bfloat16 N=1024 D=7168 warps=default baseline=189.511us fused=141.446us speedup=1.340
+bfloat16 N=4096 D=7168 warps=default baseline=762.569us fused=523.176us speedup=1.458
+float16  N=   1 D=4096 warps=default baseline=8.912us fused=13.160us speedup=0.677
+float16  N=   8 D=4096 warps=default baseline=9.326us fused=13.356us speedup=0.698
+float16  N=  32 D=4096 warps=default baseline=10.647us fused=13.826us speedup=0.770
+float16  N= 128 D=4096 warps=default baseline=19.357us fused=15.224us speedup=1.271
+float16  N=1024 D=4096 warps=default baseline=106.605us fused=76.875us speedup=1.387
+float16  N=4096 D=4096 warps=default baseline=433.870us fused=282.845us speedup=1.534
+float16  N=   1 D=7168 warps=default baseline=9.132us fused=30.930us speedup=0.295
+float16  N=   8 D=7168 warps=default baseline=9.619us fused=28.969us speedup=0.332
+float16  N=  32 D=7168 warps=default baseline=12.691us fused=28.513us speedup=0.445
+float16  N= 128 D=7168 warps=default baseline=28.843us fused=31.744us speedup=0.909
+float16  N=1024 D=7168 warps=default baseline=189.524us fused=136.999us speedup=1.383
+float16  N=4096 D=7168 warps=default baseline=762.491us fused=508.081us speedup=1.501

@@ -1,0 +1,10 @@
+{
+  "fused_kernels": [
+    "_fused_post_pre"
+  ],
+  "official_kernels": [
+    "_ihc_post_kernel",
+    "_ihc_pre_stage1",
+    "_ihc_pre_stage2"
+  ]
+}

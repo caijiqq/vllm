@@ -1,0 +1,950 @@
+[
+  {
+    "rank": 0,
+    "world_size": 4,
+    "pid": 453840,
+    "device": 0,
+    "gpu": "NVIDIA H100 80GB HBM3",
+    "flags": [
+      {
+        "intra": true,
+        "cross": true
+      },
+      {
+        "intra": true,
+        "cross": true
+      },
+      {
+        "intra": true,
+        "cross": false
+      }
+    ],
+    "partitions": [
+      {
+        "layer": 0,
+        "local_heads": 16,
+        "hc_weight": [
+          8,
+          24576
+        ],
+        "mlp_class": "HYV4FeedForward",
+        "mlp_tp": null,
+        "mlp_ep": null,
+        "linears": {
+          "self_attn.fused_qkv_a_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 2624,
+            "tp_size": 1,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.q_b_proj": {
+            "input_size_per_partition": 2048,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.kv_b_proj": {
+            "input_size_per_partition": 512,
+            "output_size_per_partition": 7168,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.o_proj": {
+            "input_size_per_partition": 4096,
+            "output_size_per_partition": 6144,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.indexer.wq_b": {
+            "input_size_per_partition": 2048,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.indexer.wk_weights_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 160,
+            "tp_size": 1,
+            "quant_method": "UnquantizedLinearMethod",
+            "kernel": "NoneType"
+          },
+          "self_attn.linear_gate": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "UnquantizedLinearMethod",
+            "kernel": "NoneType"
+          },
+          "mlp.gate_up_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 9216,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "mlp.down_proj": {
+            "input_size_per_partition": 4608,
+            "output_size_per_partition": 6144,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          }
+        }
+      },
+      {
+        "layer": 1,
+        "local_heads": 16,
+        "hc_weight": [
+          8,
+          24576
+        ],
+        "mlp_class": "HYV4MoEFused",
+        "mlp_tp": 4,
+        "mlp_ep": 4,
+        "linears": {
+          "self_attn.fused_qkv_a_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 2624,
+            "tp_size": 1,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.q_b_proj": {
+            "input_size_per_partition": 2048,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.kv_b_proj": {
+            "input_size_per_partition": 512,
+            "output_size_per_partition": 7168,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.o_proj": {
+            "input_size_per_partition": 4096,
+            "output_size_per_partition": 6144,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.indexer.wq_b": {
+            "input_size_per_partition": 2048,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.indexer.wk_weights_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 160,
+            "tp_size": 1,
+            "quant_method": "UnquantizedLinearMethod",
+            "kernel": "NoneType"
+          },
+          "self_attn.linear_gate": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "UnquantizedLinearMethod",
+            "kernel": "NoneType"
+          },
+          "mlp.shared_experts.gate_up_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 1024,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "mlp.shared_experts.down_proj": {
+            "input_size_per_partition": 512,
+            "output_size_per_partition": 6144,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          }
+        }
+      },
+      {
+        "layer": 2,
+        "local_heads": 16,
+        "hc_weight": [
+          8,
+          24576
+        ],
+        "mlp_class": "HYV4MoEFused",
+        "mlp_tp": 4,
+        "mlp_ep": 4,
+        "linears": {
+          "self_attn.fused_qkv_a_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 2624,
+            "tp_size": 1,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.q_b_proj": {
+            "input_size_per_partition": 2048,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.kv_b_proj": {
+            "input_size_per_partition": 512,
+            "output_size_per_partition": 7168,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.o_proj": {
+            "input_size_per_partition": 4096,
+            "output_size_per_partition": 6144,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.linear_gate": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "UnquantizedLinearMethod",
+            "kernel": "NoneType"
+          },
+          "mlp.shared_experts.gate_up_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 1024,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "mlp.shared_experts.down_proj": {
+            "input_size_per_partition": 512,
+            "output_size_per_partition": 6144,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "rank": 1,
+    "world_size": 4,
+    "pid": 454141,
+    "device": 1,
+    "gpu": "NVIDIA H100 80GB HBM3",
+    "flags": [
+      {
+        "intra": true,
+        "cross": true
+      },
+      {
+        "intra": true,
+        "cross": true
+      },
+      {
+        "intra": true,
+        "cross": false
+      }
+    ],
+    "partitions": [
+      {
+        "layer": 0,
+        "local_heads": 16,
+        "hc_weight": [
+          8,
+          24576
+        ],
+        "mlp_class": "HYV4FeedForward",
+        "mlp_tp": null,
+        "mlp_ep": null,
+        "linears": {
+          "self_attn.fused_qkv_a_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 2624,
+            "tp_size": 1,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.q_b_proj": {
+            "input_size_per_partition": 2048,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.kv_b_proj": {
+            "input_size_per_partition": 512,
+            "output_size_per_partition": 7168,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.o_proj": {
+            "input_size_per_partition": 4096,
+            "output_size_per_partition": 6144,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.indexer.wq_b": {
+            "input_size_per_partition": 2048,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.indexer.wk_weights_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 160,
+            "tp_size": 1,
+            "quant_method": "UnquantizedLinearMethod",
+            "kernel": "NoneType"
+          },
+          "self_attn.linear_gate": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "UnquantizedLinearMethod",
+            "kernel": "NoneType"
+          },
+          "mlp.gate_up_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 9216,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "mlp.down_proj": {
+            "input_size_per_partition": 4608,
+            "output_size_per_partition": 6144,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          }
+        }
+      },
+      {
+        "layer": 1,
+        "local_heads": 16,
+        "hc_weight": [
+          8,
+          24576
+        ],
+        "mlp_class": "HYV4MoEFused",
+        "mlp_tp": 4,
+        "mlp_ep": 4,
+        "linears": {
+          "self_attn.fused_qkv_a_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 2624,
+            "tp_size": 1,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.q_b_proj": {
+            "input_size_per_partition": 2048,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.kv_b_proj": {
+            "input_size_per_partition": 512,
+            "output_size_per_partition": 7168,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.o_proj": {
+            "input_size_per_partition": 4096,
+            "output_size_per_partition": 6144,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.indexer.wq_b": {
+            "input_size_per_partition": 2048,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.indexer.wk_weights_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 160,
+            "tp_size": 1,
+            "quant_method": "UnquantizedLinearMethod",
+            "kernel": "NoneType"
+          },
+          "self_attn.linear_gate": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "UnquantizedLinearMethod",
+            "kernel": "NoneType"
+          },
+          "mlp.shared_experts.gate_up_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 1024,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "mlp.shared_experts.down_proj": {
+            "input_size_per_partition": 512,
+            "output_size_per_partition": 6144,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          }
+        }
+      },
+      {
+        "layer": 2,
+        "local_heads": 16,
+        "hc_weight": [
+          8,
+          24576
+        ],
+        "mlp_class": "HYV4MoEFused",
+        "mlp_tp": 4,
+        "mlp_ep": 4,
+        "linears": {
+          "self_attn.fused_qkv_a_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 2624,
+            "tp_size": 1,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.q_b_proj": {
+            "input_size_per_partition": 2048,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.kv_b_proj": {
+            "input_size_per_partition": 512,
+            "output_size_per_partition": 7168,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.o_proj": {
+            "input_size_per_partition": 4096,
+            "output_size_per_partition": 6144,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.linear_gate": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "UnquantizedLinearMethod",
+            "kernel": "NoneType"
+          },
+          "mlp.shared_experts.gate_up_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 1024,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "mlp.shared_experts.down_proj": {
+            "input_size_per_partition": 512,
+            "output_size_per_partition": 6144,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "rank": 2,
+    "world_size": 4,
+    "pid": 454510,
+    "device": 2,
+    "gpu": "NVIDIA H100 80GB HBM3",
+    "flags": [
+      {
+        "intra": true,
+        "cross": true
+      },
+      {
+        "intra": true,
+        "cross": true
+      },
+      {
+        "intra": true,
+        "cross": false
+      }
+    ],
+    "partitions": [
+      {
+        "layer": 0,
+        "local_heads": 16,
+        "hc_weight": [
+          8,
+          24576
+        ],
+        "mlp_class": "HYV4FeedForward",
+        "mlp_tp": null,
+        "mlp_ep": null,
+        "linears": {
+          "self_attn.fused_qkv_a_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 2624,
+            "tp_size": 1,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.q_b_proj": {
+            "input_size_per_partition": 2048,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.kv_b_proj": {
+            "input_size_per_partition": 512,
+            "output_size_per_partition": 7168,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.o_proj": {
+            "input_size_per_partition": 4096,
+            "output_size_per_partition": 6144,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.indexer.wq_b": {
+            "input_size_per_partition": 2048,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.indexer.wk_weights_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 160,
+            "tp_size": 1,
+            "quant_method": "UnquantizedLinearMethod",
+            "kernel": "NoneType"
+          },
+          "self_attn.linear_gate": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "UnquantizedLinearMethod",
+            "kernel": "NoneType"
+          },
+          "mlp.gate_up_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 9216,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "mlp.down_proj": {
+            "input_size_per_partition": 4608,
+            "output_size_per_partition": 6144,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          }
+        }
+      },
+      {
+        "layer": 1,
+        "local_heads": 16,
+        "hc_weight": [
+          8,
+          24576
+        ],
+        "mlp_class": "HYV4MoEFused",
+        "mlp_tp": 4,
+        "mlp_ep": 4,
+        "linears": {
+          "self_attn.fused_qkv_a_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 2624,
+            "tp_size": 1,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.q_b_proj": {
+            "input_size_per_partition": 2048,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.kv_b_proj": {
+            "input_size_per_partition": 512,
+            "output_size_per_partition": 7168,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.o_proj": {
+            "input_size_per_partition": 4096,
+            "output_size_per_partition": 6144,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.indexer.wq_b": {
+            "input_size_per_partition": 2048,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.indexer.wk_weights_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 160,
+            "tp_size": 1,
+            "quant_method": "UnquantizedLinearMethod",
+            "kernel": "NoneType"
+          },
+          "self_attn.linear_gate": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "UnquantizedLinearMethod",
+            "kernel": "NoneType"
+          },
+          "mlp.shared_experts.gate_up_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 1024,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "mlp.shared_experts.down_proj": {
+            "input_size_per_partition": 512,
+            "output_size_per_partition": 6144,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          }
+        }
+      },
+      {
+        "layer": 2,
+        "local_heads": 16,
+        "hc_weight": [
+          8,
+          24576
+        ],
+        "mlp_class": "HYV4MoEFused",
+        "mlp_tp": 4,
+        "mlp_ep": 4,
+        "linears": {
+          "self_attn.fused_qkv_a_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 2624,
+            "tp_size": 1,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.q_b_proj": {
+            "input_size_per_partition": 2048,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.kv_b_proj": {
+            "input_size_per_partition": 512,
+            "output_size_per_partition": 7168,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.o_proj": {
+            "input_size_per_partition": 4096,
+            "output_size_per_partition": 6144,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.linear_gate": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "UnquantizedLinearMethod",
+            "kernel": "NoneType"
+          },
+          "mlp.shared_experts.gate_up_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 1024,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "mlp.shared_experts.down_proj": {
+            "input_size_per_partition": 512,
+            "output_size_per_partition": 6144,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "rank": 3,
+    "world_size": 4,
+    "pid": 454885,
+    "device": 3,
+    "gpu": "NVIDIA H100 80GB HBM3",
+    "flags": [
+      {
+        "intra": true,
+        "cross": true
+      },
+      {
+        "intra": true,
+        "cross": true
+      },
+      {
+        "intra": true,
+        "cross": false
+      }
+    ],
+    "partitions": [
+      {
+        "layer": 0,
+        "local_heads": 16,
+        "hc_weight": [
+          8,
+          24576
+        ],
+        "mlp_class": "HYV4FeedForward",
+        "mlp_tp": null,
+        "mlp_ep": null,
+        "linears": {
+          "self_attn.fused_qkv_a_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 2624,
+            "tp_size": 1,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.q_b_proj": {
+            "input_size_per_partition": 2048,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.kv_b_proj": {
+            "input_size_per_partition": 512,
+            "output_size_per_partition": 7168,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.o_proj": {
+            "input_size_per_partition": 4096,
+            "output_size_per_partition": 6144,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.indexer.wq_b": {
+            "input_size_per_partition": 2048,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.indexer.wk_weights_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 160,
+            "tp_size": 1,
+            "quant_method": "UnquantizedLinearMethod",
+            "kernel": "NoneType"
+          },
+          "self_attn.linear_gate": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "UnquantizedLinearMethod",
+            "kernel": "NoneType"
+          },
+          "mlp.gate_up_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 9216,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "mlp.down_proj": {
+            "input_size_per_partition": 4608,
+            "output_size_per_partition": 6144,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          }
+        }
+      },
+      {
+        "layer": 1,
+        "local_heads": 16,
+        "hc_weight": [
+          8,
+          24576
+        ],
+        "mlp_class": "HYV4MoEFused",
+        "mlp_tp": 4,
+        "mlp_ep": 4,
+        "linears": {
+          "self_attn.fused_qkv_a_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 2624,
+            "tp_size": 1,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.q_b_proj": {
+            "input_size_per_partition": 2048,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.kv_b_proj": {
+            "input_size_per_partition": 512,
+            "output_size_per_partition": 7168,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.o_proj": {
+            "input_size_per_partition": 4096,
+            "output_size_per_partition": 6144,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.indexer.wq_b": {
+            "input_size_per_partition": 2048,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.indexer.wk_weights_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 160,
+            "tp_size": 1,
+            "quant_method": "UnquantizedLinearMethod",
+            "kernel": "NoneType"
+          },
+          "self_attn.linear_gate": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "UnquantizedLinearMethod",
+            "kernel": "NoneType"
+          },
+          "mlp.shared_experts.gate_up_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 1024,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "mlp.shared_experts.down_proj": {
+            "input_size_per_partition": 512,
+            "output_size_per_partition": 6144,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          }
+        }
+      },
+      {
+        "layer": 2,
+        "local_heads": 16,
+        "hc_weight": [
+          8,
+          24576
+        ],
+        "mlp_class": "HYV4MoEFused",
+        "mlp_tp": 4,
+        "mlp_ep": 4,
+        "linears": {
+          "self_attn.fused_qkv_a_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 2624,
+            "tp_size": 1,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.q_b_proj": {
+            "input_size_per_partition": 2048,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.kv_b_proj": {
+            "input_size_per_partition": 512,
+            "output_size_per_partition": 7168,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.o_proj": {
+            "input_size_per_partition": 4096,
+            "output_size_per_partition": 6144,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "self_attn.linear_gate": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 4096,
+            "tp_size": 4,
+            "quant_method": "UnquantizedLinearMethod",
+            "kernel": "NoneType"
+          },
+          "mlp.shared_experts.gate_up_proj": {
+            "input_size_per_partition": 6144,
+            "output_size_per_partition": 1024,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          },
+          "mlp.shared_experts.down_proj": {
+            "input_size_per_partition": 512,
+            "output_size_per_partition": 6144,
+            "tp_size": 4,
+            "quant_method": "ModelOptLinearMethod",
+            "kernel": "HummingMxfp8LinearKernel"
+          }
+        }
+      }
+    ]
+  }
+]

@@ -1,0 +1,1430 @@
+{
+  "cross_rank0": {
+    "categories": {
+      "other": {
+        "count": 9,
+        "sum_us": 1013.8099999999998
+      },
+      "communication": {
+        "count": 7,
+        "sum_us": 8445.141000000001
+      },
+      "ihc_pre": {
+        "count": 2,
+        "sum_us": 1015.251
+      },
+      "attention": {
+        "count": 97,
+        "sum_us": 18814.735999999994
+      },
+      "fused": {
+        "count": 5,
+        "sum_us": 4301.033
+      },
+      "dense_mlp": {
+        "count": 3,
+        "sum_us": 1941.158
+      },
+      "moe_other": {
+        "count": 26,
+        "sum_us": 7107.812999999998
+      },
+      "shared_moe": {
+        "count": 6,
+        "sum_us": 556.505
+      },
+      "ihc_post": {
+        "count": 1,
+        "sum_us": 310.781
+      },
+      "hc_head": {
+        "count": 15,
+        "sum_us": 2960.153
+      }
+    },
+    "activity_sum_us": 46466.381,
+    "union_us": 46465.771240234375,
+    "span_us": 46847.94384765625,
+    "overlap_us": 0.6097597656262224,
+    "gaps_us": 382.172607421875,
+    "ihc_us": 5627.065,
+    "ihc_activity_pct": 12.109970432171165,
+    "target_us": 4301.033,
+    "target_activity_pct": 9.25622548482956,
+    "counts": {
+      "_ihc_pre_stage1": 1,
+      "_ihc_pre_stage2": 1,
+      "_fused_post_pre": 5,
+      "_ihc_post_kernel": 1
+    },
+    "fused": [
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/0",
+        "layer": "0",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770942501.701,
+        "duration_us": 863.509,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/1",
+        "layer": "1",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770945868.314,
+        "duration_us": 859.989,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/1",
+        "layer": "1",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770959029.49,
+        "duration_us": 862.197,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/2",
+        "layer": "2",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770964319.886,
+        "duration_us": 855.381,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/2",
+        "layer": "2",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770971335.796,
+        "duration_us": 859.957,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      }
+    ],
+    "communication_names": [
+      "ncclDevKernel_AllReduce_Sum_bf16_RING_LL(ncclDevKernelArgsStorage<4096ul>)"
+    ],
+    "outside_gpu_count": 38
+  },
+  "cross_rank1": {
+    "categories": {
+      "other": {
+        "count": 9,
+        "sum_us": 1011.6379999999999
+      },
+      "communication": {
+        "count": 7,
+        "sum_us": 6990.584000000001
+      },
+      "ihc_pre": {
+        "count": 2,
+        "sum_us": 1014.389
+      },
+      "attention": {
+        "count": 97,
+        "sum_us": 18763.97300000001
+      },
+      "fused": {
+        "count": 5,
+        "sum_us": 4291.7
+      },
+      "dense_mlp": {
+        "count": 3,
+        "sum_us": 1936.6209999999999
+      },
+      "moe_other": {
+        "count": 26,
+        "sum_us": 7131.518
+      },
+      "shared_moe": {
+        "count": 6,
+        "sum_us": 552.153
+      },
+      "ihc_post": {
+        "count": 1,
+        "sum_us": 309.245
+      },
+      "hc_head": {
+        "count": 15,
+        "sum_us": 2956.2260000000006
+      }
+    },
+    "activity_sum_us": 44958.047,
+    "union_us": 44957.37646484375,
+    "span_us": 46894.983154296875,
+    "overlap_us": 0.6705351562486612,
+    "gaps_us": 1937.606689453125,
+    "ihc_us": 5615.334,
+    "ihc_activity_pct": 12.490164441529235,
+    "target_us": 4291.7,
+    "target_activity_pct": 9.546010750867358,
+    "counts": {
+      "_ihc_pre_stage1": 1,
+      "_ihc_pre_stage2": 1,
+      "_fused_post_pre": 5,
+      "_ihc_post_kernel": 1
+    },
+    "fused": [
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/0",
+        "layer": "0",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770942486.879,
+        "duration_us": 857.591,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/1",
+        "layer": "1",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770945843.037,
+        "duration_us": 856.311,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/1",
+        "layer": "1",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770959041.816,
+        "duration_us": 859.799,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/2",
+        "layer": "2",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770964331.938,
+        "duration_us": 860.151,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/2",
+        "layer": "2",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770971350.683,
+        "duration_us": 857.848,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      }
+    ],
+    "communication_names": [
+      "ncclDevKernel_AllReduce_Sum_bf16_RING_LL(ncclDevKernelArgsStorage<4096ul>)"
+    ],
+    "outside_gpu_count": 38
+  },
+  "cross_rank2": {
+    "categories": {
+      "other": {
+        "count": 9,
+        "sum_us": 1011.727
+      },
+      "communication": {
+        "count": 7,
+        "sum_us": 3267.084
+      },
+      "ihc_pre": {
+        "count": 2,
+        "sum_us": 1015.152
+      },
+      "attention": {
+        "count": 97,
+        "sum_us": 18929.524
+      },
+      "fused": {
+        "count": 5,
+        "sum_us": 4282.494
+      },
+      "dense_mlp": {
+        "count": 3,
+        "sum_us": 1969.792
+      },
+      "moe_other": {
+        "count": 26,
+        "sum_us": 7171.533
+      },
+      "shared_moe": {
+        "count": 6,
+        "sum_us": 556.538
+      },
+      "ihc_post": {
+        "count": 1,
+        "sum_us": 308.123
+      },
+      "hc_head": {
+        "count": 15,
+        "sum_us": 2963.7299999999996
+      }
+    },
+    "activity_sum_us": 41475.697,
+    "union_us": 41475.154052734375,
+    "span_us": 46927.06005859375,
+    "overlap_us": 0.5429472656251164,
+    "gaps_us": 5451.906005859375,
+    "ihc_us": 5605.769,
+    "ihc_activity_pct": 13.51579215172683,
+    "target_us": 4282.494,
+    "target_activity_pct": 10.32530930101066,
+    "counts": {
+      "_ihc_pre_stage1": 1,
+      "_ihc_pre_stage2": 1,
+      "_fused_post_pre": 5,
+      "_ihc_post_kernel": 1
+    },
+    "fused": [
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/0",
+        "layer": "0",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770942498.255,
+        "duration_us": 857.203,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/1",
+        "layer": "1",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770945871.834,
+        "duration_us": 857.202,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/1",
+        "layer": "1",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770959066.183,
+        "duration_us": 857.267,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/2",
+        "layer": "2",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770964356.883,
+        "duration_us": 855.667,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/2",
+        "layer": "2",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770971376.227,
+        "duration_us": 855.155,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      }
+    ],
+    "communication_names": [
+      "ncclDevKernel_AllReduce_Sum_bf16_RING_LL(ncclDevKernelArgsStorage<4096ul>)"
+    ],
+    "outside_gpu_count": 38
+  },
+  "cross_rank3": {
+    "categories": {
+      "other": {
+        "count": 9,
+        "sum_us": 1016.948
+      },
+      "communication": {
+        "count": 7,
+        "sum_us": 6810.012
+      },
+      "ihc_pre": {
+        "count": 2,
+        "sum_us": 1020.951
+      },
+      "attention": {
+        "count": 97,
+        "sum_us": 18890.184000000005
+      },
+      "fused": {
+        "count": 5,
+        "sum_us": 4297.624
+      },
+      "dense_mlp": {
+        "count": 3,
+        "sum_us": 1952.973
+      },
+      "moe_other": {
+        "count": 26,
+        "sum_us": 7141.021
+      },
+      "shared_moe": {
+        "count": 6,
+        "sum_us": 559.292
+      },
+      "ihc_post": {
+        "count": 1,
+        "sum_us": 310.525
+      },
+      "hc_head": {
+        "count": 15,
+        "sum_us": 2963.011
+      }
+    },
+    "activity_sum_us": 44962.541,
+    "union_us": 44961.804931640625,
+    "span_us": 46911.575927734375,
+    "overlap_us": 0.7360683593724389,
+    "gaps_us": 1949.77099609375,
+    "ihc_us": 5629.1,
+    "ihc_activity_pct": 12.519532648299393,
+    "target_us": 4297.624,
+    "target_activity_pct": 9.558232040311067,
+    "counts": {
+      "_ihc_pre_stage1": 1,
+      "_ihc_pre_stage2": 1,
+      "_fused_post_pre": 5,
+      "_ihc_post_kernel": 1
+    },
+    "fused": [
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/0",
+        "layer": "0",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770942514.534,
+        "duration_us": 861.24,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/1",
+        "layer": "1",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770945880.933,
+        "duration_us": 857.624,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/1",
+        "layer": "1",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770959051.941,
+        "duration_us": 859.32,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/2",
+        "layer": "2",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770964342.962,
+        "duration_us": 860.024,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/2",
+        "layer": "2",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770971362.477,
+        "duration_us": 859.416,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      }
+    ],
+    "communication_names": [
+      "ncclDevKernel_AllReduce_Sum_bf16_RING_LL(ncclDevKernelArgsStorage<4096ul>)"
+    ],
+    "outside_gpu_count": 38
+  },
+  "intra_rank0": {
+    "categories": {
+      "other": {
+        "count": 9,
+        "sum_us": 1009.0749999999999
+      },
+      "communication": {
+        "count": 7,
+        "sum_us": 3742.386
+      },
+      "ihc_pre": {
+        "count": 6,
+        "sum_us": 3039.3849999999998
+      },
+      "attention": {
+        "count": 97,
+        "sum_us": 18790.743999999995
+      },
+      "fused": {
+        "count": 3,
+        "sum_us": 2577.375
+      },
+      "dense_mlp": {
+        "count": 3,
+        "sum_us": 1934.856
+      },
+      "ihc_post": {
+        "count": 3,
+        "sum_us": 930.068
+      },
+      "moe_other": {
+        "count": 26,
+        "sum_us": 7100.650000000001
+      },
+      "shared_moe": {
+        "count": 6,
+        "sum_us": 558.5519999999999
+      },
+      "hc_head": {
+        "count": 15,
+        "sum_us": 2956.9570000000003
+      }
+    },
+    "activity_sum_us": 42640.048,
+    "union_us": 42639.472900390625,
+    "span_us": 42976.934814453125,
+    "overlap_us": 0.5750996093775029,
+    "gaps_us": 337.4619140625,
+    "ihc_us": 6546.828,
+    "ihc_activity_pct": 15.353706918904031,
+    "target_us": 5228.253,
+    "target_activity_pct": 12.261367529417415,
+    "counts": {
+      "_ihc_pre_stage1": 3,
+      "_ihc_pre_stage2": 3,
+      "_fused_post_pre": 3,
+      "_ihc_post_kernel": 3
+    },
+    "fused": [
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/0",
+        "layer": "0",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770726327.771,
+        "duration_us": 859.221,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/1",
+        "layer": "1",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770738354.757,
+        "duration_us": 858.741,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/2",
+        "layer": "2",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770751219.268,
+        "duration_us": 859.413,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      }
+    ],
+    "communication_names": [
+      "ncclDevKernel_AllReduce_Sum_bf16_RING_LL(ncclDevKernelArgsStorage<4096ul>)"
+    ],
+    "outside_gpu_count": 38
+  },
+  "intra_rank1": {
+    "categories": {
+      "other": {
+        "count": 9,
+        "sum_us": 1006.4530000000001
+      },
+      "communication": {
+        "count": 7,
+        "sum_us": 3836.283
+      },
+      "ihc_pre": {
+        "count": 6,
+        "sum_us": 3008.962
+      },
+      "attention": {
+        "count": 97,
+        "sum_us": 18707.332
+      },
+      "fused": {
+        "count": 3,
+        "sum_us": 2563.655
+      },
+      "dense_mlp": {
+        "count": 3,
+        "sum_us": 1937.676
+      },
+      "ihc_post": {
+        "count": 3,
+        "sum_us": 925.239
+      },
+      "moe_other": {
+        "count": 26,
+        "sum_us": 7084.635
+      },
+      "shared_moe": {
+        "count": 6,
+        "sum_us": 555.418
+      },
+      "hc_head": {
+        "count": 15,
+        "sum_us": 2959.872
+      }
+    },
+    "activity_sum_us": 42585.525,
+    "union_us": 42584.95068359375,
+    "span_us": 43005.551025390625,
+    "overlap_us": 0.5743164062514552,
+    "gaps_us": 420.600341796875,
+    "ihc_us": 6497.856,
+    "ihc_activity_pct": 15.25836772001754,
+    "target_us": 5187.885,
+    "target_activity_pct": 12.182273201985886,
+    "counts": {
+      "_ihc_pre_stage1": 3,
+      "_ihc_pre_stage2": 3,
+      "_fused_post_pre": 3,
+      "_ihc_post_kernel": 3
+    },
+    "fused": [
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/0",
+        "layer": "0",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770726339.203,
+        "duration_us": 854.744,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/1",
+        "layer": "1",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770738367.658,
+        "duration_us": 855.128,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/2",
+        "layer": "2",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770751230.217,
+        "duration_us": 853.783,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      }
+    ],
+    "communication_names": [
+      "ncclDevKernel_AllReduce_Sum_bf16_RING_LL(ncclDevKernelArgsStorage<4096ul>)"
+    ],
+    "outside_gpu_count": 38
+  },
+  "intra_rank2": {
+    "categories": {
+      "other": {
+        "count": 9,
+        "sum_us": 1011.534
+      },
+      "communication": {
+        "count": 7,
+        "sum_us": 3266.697
+      },
+      "ihc_pre": {
+        "count": 6,
+        "sum_us": 3072.7490000000003
+      },
+      "attention": {
+        "count": 97,
+        "sum_us": 19047.998000000007
+      },
+      "fused": {
+        "count": 3,
+        "sum_us": 2588.8540000000003
+      },
+      "dense_mlp": {
+        "count": 3,
+        "sum_us": 1968.5099999999998
+      },
+      "ihc_post": {
+        "count": 3,
+        "sum_us": 927.121
+      },
+      "moe_other": {
+        "count": 26,
+        "sum_us": 7233.476
+      },
+      "shared_moe": {
+        "count": 6,
+        "sum_us": 565.8130000000001
+      },
+      "hc_head": {
+        "count": 15,
+        "sum_us": 2965.1679999999997
+      }
+    },
+    "activity_sum_us": 42647.92,
+    "union_us": 42647.37841796875,
+    "span_us": 43038.25,
+    "overlap_us": 0.5415820312482538,
+    "gaps_us": 390.87158203125,
+    "ihc_us": 6588.724,
+    "ihc_activity_pct": 15.449109827630517,
+    "target_us": 5244.0740000000005,
+    "target_activity_pct": 12.2962010808499,
+    "counts": {
+      "_ihc_pre_stage1": 3,
+      "_ihc_pre_stage2": 3,
+      "_fused_post_pre": 3,
+      "_ihc_post_kernel": 3
+    },
+    "fused": [
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/0",
+        "layer": "0",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770726367.396,
+        "duration_us": 864.594,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/1",
+        "layer": "1",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770738391.993,
+        "duration_us": 863.666,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/2",
+        "layer": "2",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770751257.44,
+        "duration_us": 860.594,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      }
+    ],
+    "communication_names": [
+      "ncclDevKernel_AllReduce_Sum_bf16_RING_LL(ncclDevKernelArgsStorage<4096ul>)"
+    ],
+    "outside_gpu_count": 38
+  },
+  "intra_rank3": {
+    "categories": {
+      "other": {
+        "count": 9,
+        "sum_us": 1017.3009999999999
+      },
+      "communication": {
+        "count": 7,
+        "sum_us": 3557.371
+      },
+      "ihc_pre": {
+        "count": 6,
+        "sum_us": 3057.471
+      },
+      "attention": {
+        "count": 97,
+        "sum_us": 18892.05900000001
+      },
+      "fused": {
+        "count": 3,
+        "sum_us": 2584.0370000000003
+      },
+      "dense_mlp": {
+        "count": 3,
+        "sum_us": 1951.821
+      },
+      "ihc_post": {
+        "count": 3,
+        "sum_us": 930.037
+      },
+      "moe_other": {
+        "count": 26,
+        "sum_us": 7143.2210000000005
+      },
+      "shared_moe": {
+        "count": 6,
+        "sum_us": 555.802
+      },
+      "hc_head": {
+        "count": 15,
+        "sum_us": 2965.0570000000002
+      }
+    },
+    "activity_sum_us": 42654.176999999996,
+    "union_us": 42653.599609375,
+    "span_us": 43028.254150390625,
+    "overlap_us": 0.5773906249960419,
+    "gaps_us": 374.654541015625,
+    "ihc_us": 6571.545,
+    "ihc_activity_pct": 15.406568505588563,
+    "target_us": 5240.454,
+    "target_activity_pct": 12.285910474840483,
+    "counts": {
+      "_ihc_pre_stage1": 3,
+      "_ihc_pre_stage2": 3,
+      "_fused_post_pre": 3,
+      "_ihc_post_kernel": 3
+    },
+    "fused": [
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/0",
+        "layer": "0",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770726354.403,
+        "duration_us": 863.063,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/1",
+        "layer": "1",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770738378.533,
+        "duration_us": 859.159,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "_fused_post_pre",
+        "category": "fused",
+        "module": "layer/2",
+        "layer": "2",
+        "inside_forward": true,
+        "target_boundary": true,
+        "start_us": 1778770751244.734,
+        "duration_us": 861.815,
+        "stream": 19,
+        "grid": [
+          8192,
+          1,
+          1
+        ],
+        "block": [
+          128,
+          1,
+          1
+        ]
+      }
+    ],
+    "communication_names": [
+      "ncclDevKernel_AllReduce_Sum_bf16_RING_LL(ncclDevKernelArgsStorage<4096ul>)"
+    ],
+    "outside_gpu_count": 38
+  },
+  "original_rank0": {
+    "categories": {
+      "other": {
+        "count": 9,
+        "sum_us": 1005.9080000000001
+      },
+      "communication": {
+        "count": 7,
+        "sum_us": 3501.041
+      },
+      "ihc_pre": {
+        "count": 12,
+        "sum_us": 6057.521000000001
+      },
+      "attention": {
+        "count": 97,
+        "sum_us": 18780.112999999998
+      },
+      "ihc_post": {
+        "count": 6,
+        "sum_us": 1866.6
+      },
+      "dense_mlp": {
+        "count": 3,
+        "sum_us": 1934.985
+      },
+      "moe_other": {
+        "count": 26,
+        "sum_us": 7129.959
+      },
+      "shared_moe": {
+        "count": 6,
+        "sum_us": 562.4259999999999
+      },
+      "hc_head": {
+        "count": 15,
+        "sum_us": 2960.859999999999
+      }
+    },
+    "activity_sum_us": 43799.413,
+    "union_us": 43798.77392578125,
+    "span_us": 44225.47607421875,
+    "overlap_us": 0.6390742187504657,
+    "gaps_us": 426.7021484375,
+    "ihc_us": 7924.121,
+    "ihc_activity_pct": 18.091842920360598,
+    "target_us": 6604.554,
+    "target_activity_pct": 15.079092498340104,
+    "counts": {
+      "_ihc_pre_stage1": 6,
+      "_ihc_pre_stage2": 6,
+      "_ihc_post_kernel": 6
+    },
+    "fused": [],
+    "communication_names": [
+      "ncclDevKernel_AllReduce_Sum_bf16_RING_LL(ncclDevKernelArgsStorage<4096ul>)"
+    ],
+    "outside_gpu_count": 38
+  },
+  "original_rank1": {
+    "categories": {
+      "other": {
+        "count": 9,
+        "sum_us": 997.7829999999999
+      },
+      "communication": {
+        "count": 7,
+        "sum_us": 3496.573
+      },
+      "ihc_pre": {
+        "count": 12,
+        "sum_us": 6047.203999999999
+      },
+      "attention": {
+        "count": 97,
+        "sum_us": 18760.45
+      },
+      "ihc_post": {
+        "count": 6,
+        "sum_us": 1853.549
+      },
+      "dense_mlp": {
+        "count": 3,
+        "sum_us": 1934.637
+      },
+      "moe_other": {
+        "count": 26,
+        "sum_us": 7152.022000000001
+      },
+      "shared_moe": {
+        "count": 6,
+        "sum_us": 558.0740000000001
+      },
+      "hc_head": {
+        "count": 15,
+        "sum_us": 2965.7929999999997
+      }
+    },
+    "activity_sum_us": 43766.085,
+    "union_us": 43765.44580078125,
+    "span_us": 44216.15576171875,
+    "overlap_us": 0.6391992187491269,
+    "gaps_us": 450.7099609375,
+    "ihc_us": 7900.753,
+    "ihc_activity_pct": 18.05222696981007,
+    "target_us": 6590.686,
+    "target_activity_pct": 15.058888634887037,
+    "counts": {
+      "_ihc_pre_stage1": 6,
+      "_ihc_pre_stage2": 6,
+      "_ihc_post_kernel": 6
+    },
+    "fused": [],
+    "communication_names": [
+      "ncclDevKernel_AllReduce_Sum_bf16_RING_LL(ncclDevKernelArgsStorage<4096ul>)"
+    ],
+    "outside_gpu_count": 38
+  },
+  "original_rank2": {
+    "categories": {
+      "other": {
+        "count": 9,
+        "sum_us": 1003.664
+      },
+      "communication": {
+        "count": 7,
+        "sum_us": 3414.5350000000003
+      },
+      "ihc_pre": {
+        "count": 12,
+        "sum_us": 6051.901000000001
+      },
+      "attention": {
+        "count": 97,
+        "sum_us": 18895.593
+      },
+      "ihc_post": {
+        "count": 6,
+        "sum_us": 1851.4899999999998
+      },
+      "dense_mlp": {
+        "count": 3,
+        "sum_us": 1961.5349999999999
+      },
+      "moe_other": {
+        "count": 26,
+        "sum_us": 7160.3589999999995
+      },
+      "shared_moe": {
+        "count": 6,
+        "sum_us": 557.398
+      },
+      "hc_head": {
+        "count": 15,
+        "sum_us": 2972.3990000000003
+      }
+    },
+    "activity_sum_us": 43868.873999999996,
+    "union_us": 43868.33056640625,
+    "span_us": 44306.498779296875,
+    "overlap_us": 0.5434335937461583,
+    "gaps_us": 438.168212890625,
+    "ihc_us": 7903.391,
+    "ihc_activity_pct": 18.015942237313865,
+    "target_us": 6586.325,
+    "target_activity_pct": 15.013663218253564,
+    "counts": {
+      "_ihc_pre_stage1": 6,
+      "_ihc_pre_stage2": 6,
+      "_ihc_post_kernel": 6
+    },
+    "fused": [],
+    "communication_names": [
+      "ncclDevKernel_AllReduce_Sum_bf16_RING_LL(ncclDevKernelArgsStorage<4096ul>)"
+    ],
+    "outside_gpu_count": 38
+  },
+  "original_rank3": {
+    "categories": {
+      "other": {
+        "count": 9,
+        "sum_us": 1004.28
+      },
+      "communication": {
+        "count": 7,
+        "sum_us": 3656.315
+      },
+      "ihc_pre": {
+        "count": 12,
+        "sum_us": 6016.096
+      },
+      "attention": {
+        "count": 97,
+        "sum_us": 18773.955000000005
+      },
+      "ihc_post": {
+        "count": 6,
+        "sum_us": 1864.749
+      },
+      "dense_mlp": {
+        "count": 3,
+        "sum_us": 1950.346
+      },
+      "moe_other": {
+        "count": 26,
+        "sum_us": 7093.720999999999
+      },
+      "shared_moe": {
+        "count": 6,
+        "sum_us": 554.009
+      },
+      "hc_head": {
+        "count": 15,
+        "sum_us": 2959.2349999999997
+      }
+    },
+    "activity_sum_us": 43872.706,
+    "union_us": 43872.164794921875,
+    "span_us": 44296.570068359375,
+    "overlap_us": 0.541205078123312,
+    "gaps_us": 424.4052734375,
+    "ihc_us": 7880.845,
+    "ihc_activity_pct": 17.96297907860983,
+    "target_us": 6567.707,
+    "target_activity_pct": 14.969915464070079,
+    "counts": {
+      "_ihc_pre_stage1": 6,
+      "_ihc_pre_stage2": 6,
+      "_ihc_post_kernel": 6
+    },
+    "fused": [],
+    "communication_names": [
+      "ncclDevKernel_AllReduce_Sum_bf16_RING_LL(ncclDevKernelArgsStorage<4096ul>)"
+    ],
+    "outside_gpu_count": 38
+  }
+}

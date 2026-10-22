@@ -1,0 +1,11 @@
+........................................................................ [ 72%]
+...........................                                              [100%]
+=============================== warnings summary ===============================
+lab/ihc_fusion/tests/test_decode_two_stage.py::test_partials_and_outputs[0-128-random-float32]
+lab/ihc_fusion/tests/test_decode_two_stage.py::test_partials_and_outputs[0-128-random-bfloat16]
+lab/ihc_fusion/tests/test_decode_two_stage.py::test_partials_and_outputs[0-128-random-float16]
+  /usr/local/lib/python3.12/dist-packages/torch/cuda/graphs.py:169: UserWarning: The CUDA Graph is empty. This usually means that the graph was attempted to be captured on wrong device or stream. (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/cuda/CUDAGraph.cpp:210.)
+    super().capture_end()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+99 passed, 3 warnings in 13.23s

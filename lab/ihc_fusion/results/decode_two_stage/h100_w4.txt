@@ -1,0 +1,24 @@
+USDT:2026-10-21 06:30:19 568626:568626 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:30:19 568626:568626 SyncActivityProfilerHandler.cpp:59] profiler_stop
+bfloat16 1 4096 {'baseline_us': 8.932, 'single_us': 13.969, 'two_us': 6.084, 'two_speedup': 1.468}
+USDT:2026-10-21 06:30:22 568626:568626 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:30:22 568626:568626 SyncActivityProfilerHandler.cpp:59] profiler_stop
+bfloat16 8 4096 {'baseline_us': 9.345, 'single_us': 13.826, 'two_us': 6.302, 'two_speedup': 1.483}
+USDT:2026-10-21 06:30:25 568626:568626 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:30:25 568626:568626 SyncActivityProfilerHandler.cpp:59] profiler_stop
+bfloat16 32 4096 {'baseline_us': 10.69, 'single_us': 14.308, 'two_us': 6.973, 'two_speedup': 1.533}
+USDT:2026-10-21 06:30:27 568626:568626 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:30:27 568626:568626 SyncActivityProfilerHandler.cpp:59] profiler_stop
+bfloat16 128 4096 {'baseline_us': 19.392, 'single_us': 15.708, 'two_us': 13.951, 'two_speedup': 1.39}
+USDT:2026-10-21 06:30:30 568626:568626 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:30:30 568626:568626 SyncActivityProfilerHandler.cpp:59] profiler_stop
+bfloat16 1 7168 {'baseline_us': 9.168, 'single_us': 31.441, 'two_us': 6.722, 'two_speedup': 1.364}
+USDT:2026-10-21 06:30:33 568626:568626 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:30:33 568626:568626 SyncActivityProfilerHandler.cpp:59] profiler_stop
+bfloat16 8 7168 {'baseline_us': 9.632, 'single_us': 29.587, 'two_us': 6.881, 'two_speedup': 1.4}
+USDT:2026-10-21 06:30:36 568626:568626 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:30:36 568626:568626 SyncActivityProfilerHandler.cpp:59] profiler_stop
+bfloat16 32 7168 {'baseline_us': 12.712, 'single_us': 29.215, 'two_us': 8.737, 'two_speedup': 1.455}
+USDT:2026-10-21 06:30:39 568626:568626 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:30:39 568626:568626 SyncActivityProfilerHandler.cpp:59] profiler_stop
+bfloat16 128 7168 {'baseline_us': 28.864, 'single_us': 32.349, 'two_us': 21.038, 'two_speedup': 1.372}

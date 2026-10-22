@@ -1,0 +1,108 @@
+USDT:2026-10-21 06:28:15 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:28:15 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+bfloat16 1 4096 {'baseline_us': 8.933, 'single_us': 13.966, 'two_us': 5.761, 'two_speedup': 1.551}
+USDT:2026-10-21 06:28:18 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:28:18 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+bfloat16 8 4096 {'baseline_us': 9.339, 'single_us': 13.827, 'two_us': 5.947, 'two_speedup': 1.57}
+USDT:2026-10-21 06:28:21 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:28:21 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+bfloat16 32 4096 {'baseline_us': 10.693, 'single_us': 14.308, 'two_us': 7.32, 'two_speedup': 1.461}
+USDT:2026-10-21 06:28:23 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:28:23 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+bfloat16 128 4096 {'baseline_us': 19.37, 'single_us': 15.704, 'two_us': 15.862, 'two_speedup': 1.221}
+USDT:2026-10-21 06:28:26 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:28:26 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+bfloat16 1024 4096 {'baseline_us': 106.014, 'single_us': 78.52, 'two_us': 91.225, 'two_speedup': 1.162}
+USDT:2026-10-21 06:28:29 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:28:29 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+bfloat16 4096 4096 {'baseline_us': 431.479, 'single_us': 290.07, 'two_us': 356.356, 'two_speedup': 1.211}
+USDT:2026-10-21 06:28:33 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:28:33 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+bfloat16 1 7168 {'baseline_us': 9.219, 'single_us': 31.451, 'two_us': 6.42, 'two_speedup': 1.436}
+USDT:2026-10-21 06:28:36 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:28:36 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+bfloat16 8 7168 {'baseline_us': 9.635, 'single_us': 29.578, 'two_us': 6.578, 'two_speedup': 1.465}
+USDT:2026-10-21 06:28:39 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:28:39 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+bfloat16 32 7168 {'baseline_us': 12.699, 'single_us': 29.18, 'two_us': 9.754, 'two_speedup': 1.302}
+USDT:2026-10-21 06:28:41 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:28:41 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+bfloat16 128 7168 {'baseline_us': 28.91, 'single_us': 32.43, 'two_us': 24.032, 'two_speedup': 1.203}
+USDT:2026-10-21 06:28:44 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:28:44 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+bfloat16 1024 7168 {'baseline_us': 188.631, 'single_us': 141.462, 'two_us': 160.016, 'two_speedup': 1.179}
+USDT:2026-10-21 06:28:48 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:28:48 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+bfloat16 4096 7168 {'baseline_us': 758.532, 'single_us': 523.444, 'two_us': 623.655, 'two_speedup': 1.216}
+USDT:2026-10-21 06:28:52 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:28:52 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+float32 1 4096 {'baseline_us': 9.28, 'single_us': 13.659, 'two_us': 6.0, 'two_speedup': 1.547}
+USDT:2026-10-21 06:28:55 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:28:55 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+float32 8 4096 {'baseline_us': 9.843, 'single_us': 13.749, 'two_us': 6.268, 'two_speedup': 1.57}
+USDT:2026-10-21 06:28:57 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:28:57 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+float32 32 4096 {'baseline_us': 11.581, 'single_us': 14.704, 'two_us': 8.254, 'two_speedup': 1.403}
+USDT:2026-10-21 06:29:00 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:29:00 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+float32 128 4096 {'baseline_us': 23.125, 'single_us': 17.902, 'two_us': 18.761, 'two_speedup': 1.233}
+USDT:2026-10-21 06:29:02 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:29:02 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+float32 1024 4096 {'baseline_us': 149.831, 'single_us': 130.101, 'two_us': 118.561, 'two_speedup': 1.264}
+USDT:2026-10-21 06:29:06 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:29:06 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+float32 4096 4096 {'baseline_us': 593.458, 'single_us': 497.542, 'two_us': 437.862, 'two_speedup': 1.355}
+USDT:2026-10-21 06:29:09 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:29:09 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+float32 1 7168 {'baseline_us': 9.271, 'single_us': 27.053, 'two_us': 6.285, 'two_speedup': 1.475}
+USDT:2026-10-21 06:29:12 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:29:12 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+float32 8 7168 {'baseline_us': 9.95, 'single_us': 26.995, 'two_us': 6.706, 'two_speedup': 1.484}
+USDT:2026-10-21 06:29:15 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:29:15 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+float32 32 7168 {'baseline_us': 13.977, 'single_us': 28.313, 'two_us': 11.058, 'two_speedup': 1.264}
+USDT:2026-10-21 06:29:17 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:29:17 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+float32 128 7168 {'baseline_us': 34.914, 'single_us': 33.933, 'two_us': 28.354, 'two_speedup': 1.231}
+USDT:2026-10-21 06:29:20 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:29:20 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+float32 1024 7168 {'baseline_us': 260.889, 'single_us': 250.198, 'two_us': 199.44, 'two_speedup': 1.308}
+USDT:2026-10-21 06:29:25 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:29:25 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+float32 4096 7168 {'baseline_us': 1040.057, 'single_us': 997.136, 'two_us': 760.368, 'two_speedup': 1.368}
+USDT:2026-10-21 06:29:29 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:29:29 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+float16 1 4096 {'baseline_us': 8.946, 'single_us': 13.554, 'two_us': 5.766, 'two_speedup': 1.552}
+USDT:2026-10-21 06:29:32 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:29:32 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+float16 8 4096 {'baseline_us': 9.366, 'single_us': 13.409, 'two_us': 5.938, 'two_speedup': 1.577}
+USDT:2026-10-21 06:29:35 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:29:35 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+float16 32 4096 {'baseline_us': 10.658, 'single_us': 13.843, 'two_us': 7.307, 'two_speedup': 1.458}
+USDT:2026-10-21 06:29:37 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:29:37 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+float16 128 4096 {'baseline_us': 19.391, 'single_us': 15.258, 'two_us': 15.851, 'two_speedup': 1.223}
+USDT:2026-10-21 06:29:40 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:29:40 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+float16 1024 4096 {'baseline_us': 106.108, 'single_us': 76.475, 'two_us': 91.074, 'two_speedup': 1.165}
+USDT:2026-10-21 06:29:43 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:29:43 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+float16 4096 4096 {'baseline_us': 431.447, 'single_us': 280.037, 'two_us': 355.873, 'two_speedup': 1.212}
+USDT:2026-10-21 06:29:47 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:29:47 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+float16 1 7168 {'baseline_us': 9.144, 'single_us': 30.938, 'two_us': 6.343, 'two_speedup': 1.442}
+USDT:2026-10-21 06:29:49 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:29:49 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+float16 8 7168 {'baseline_us': 9.622, 'single_us': 29.009, 'two_us': 6.552, 'two_speedup': 1.468}
+USDT:2026-10-21 06:29:52 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:29:52 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+float16 32 7168 {'baseline_us': 12.664, 'single_us': 28.568, 'two_us': 9.706, 'two_speedup': 1.305}
+USDT:2026-10-21 06:29:55 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:29:55 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+float16 128 7168 {'baseline_us': 28.768, 'single_us': 31.769, 'two_us': 23.879, 'two_speedup': 1.205}
+USDT:2026-10-21 06:29:57 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:29:57 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+float16 1024 7168 {'baseline_us': 188.596, 'single_us': 136.826, 'two_us': 159.735, 'two_speedup': 1.181}
+USDT:2026-10-21 06:30:01 566520:566520 SyncActivityProfilerHandler.cpp:52] profiler_start
+USDT:2026-10-21 06:30:02 566520:566520 SyncActivityProfilerHandler.cpp:59] profiler_stop
+float16 4096 7168 {'baseline_us': 758.505, 'single_us': 507.84, 'two_us': 622.962, 'two_speedup': 1.218}
