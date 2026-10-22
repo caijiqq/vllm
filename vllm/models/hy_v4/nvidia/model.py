@@ -32,13 +32,16 @@ import torch
 from torch import nn
 from transformers import PreTrainedConfig
 
-from vllm.config import CacheConfig, VllmConfig
+from vllm import envs
+from vllm.config import CacheConfig, CUDAGraphMode, VllmConfig
 from vllm.distributed import (
     get_pp_group,
     get_tensor_model_parallel_rank,
     get_tensor_model_parallel_world_size,
 )
+from vllm.forward_context import get_forward_context, is_forward_context_available
 from vllm.logger import init_logger
+from vllm.model_executor.layers.attention.mla_attention import MLACommonMetadata
 from vllm.model_executor.layers.fused_moe import fused_moe_make_expert_params_mapping
 from vllm.model_executor.layers.layernorm import RMSNorm
 from vllm.model_executor.layers.logits_processor import LogitsProcessor
@@ -70,6 +73,7 @@ from .attention import (
 )
 from .hc import HYV4HCHeadLayer, HYV4HCLayer
 from .moe import HYV4FeedForward, HYV4MoEFused
+from .triton_ihc_post_pre import triton_ihc_post_pre
 
 logger = init_logger(__name__)
 
@@ -107,6 +111,21 @@ class HYV4DecoderLayer(nn.Module):
         self.enable_ihc = getattr(config, "enable_ihc", False)
         layer_idx = int(prefix.split(".")[-1])
         self.layer_idx = layer_idx
+        # Read the experimental switch once. Compiled/automatic graph paths
+        # retain the original boundary: batch phase must not become a guard.
+        self._ihc_fusion_enabled = (
+            getattr(config, "enable_ihc_post_pre_fusion", False) is True
+            and self.enable_ihc
+            and config.hidden_size == 6144
+            and config.hc_mult == 4
+            and vllm_config.model_config.enforce_eager
+            and vllm_config.speculative_config is None
+            and not envs.VLLM_BATCH_INVARIANT
+            and current_platform.is_cuda()
+            and current_platform.get_device_name() == "NVIDIA H100 80GB HBM3"
+        )
+
+        self._ihc_defer_post = False
 
         max_position_embeddings = getattr(config, "max_position_embeddings", 8192)
         self.self_attn = HYV4MLAAttention(
@@ -153,10 +172,10 @@ class HYV4DecoderLayer(nn.Module):
         self,
         positions: torch.Tensor,
         hidden_states: torch.Tensor,
-        residual: torch.Tensor | None,
-    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+        residual: torch.Tensor | tuple[torch.Tensor, torch.Tensor] | None,
+    ) -> tuple[torch.Tensor, torch.Tensor | tuple[torch.Tensor, torch.Tensor] | None]:
         if self.enable_ihc:
-            return self._forward_ihc(positions, hidden_states)
+            return self._forward_ihc(positions, hidden_states, residual)
         return self._forward_normal(positions, hidden_states, residual)
 
     def _forward_normal(
@@ -184,25 +203,102 @@ class HYV4DecoderLayer(nn.Module):
 
         return hidden_states, residual
 
+    def _can_fuse_ihc(self, x, residual, post_gates, pre):
+        if (
+            self._ihc_fusion_enabled
+            and not torch.compiler.is_compiling()
+            and 512 <= x.shape[0] <= 8192
+            and x.shape[1:] == (6144,)
+            and residual.shape == (x.shape[0], 4, 6144)
+            and post_gates.shape == (x.shape[0], 4)
+            and x.dtype == residual.dtype == torch.bfloat16
+            and all(
+                t.is_cuda and t.device == x.device and t.is_contiguous()
+                for t in (
+                    x,
+                    residual,
+                    post_gates,
+                    pre.hc_fn.weight,
+                    pre.hc_scale,
+                    pre.hc_base,
+                )
+            )
+            and all(
+                t.dtype == torch.float32
+                for t in (post_gates, pre.hc_fn.weight, pre.hc_scale, pre.hc_base)
+            )
+            and is_forward_context_available()
+        ):
+            context = get_forward_context()
+            metadata = context.attn_metadata
+            attn = (
+                metadata.get(self.self_attn.mla_attn.layer_name)
+                if isinstance(metadata, dict)
+                else None
+            )
+            # Reject mixed/unknown batches and padding; only CPU metadata is read.
+            if (
+                isinstance(attn, MLACommonMetadata)
+                and attn.num_prefills > 0
+                and attn.num_decodes == 0
+                and attn.num_decode_tokens == 0
+                and attn.num_actual_tokens == x.shape[0]
+                and context.ubatch_slices is None
+                and context.cudagraph_runtime_mode == CUDAGraphMode.NONE
+            ):
+                return True
+        return False
+
+    def _ihc_post_pre(self, x, residual, post_gates, *, pre_attention=False):
+        pre_layer = self.hc_attn_layer if pre_attention else self.hc_mlp_layer
+        pre = pre_layer.hc_pre
+        if self._can_fuse_ihc(x, residual, post_gates, pre):
+            output, updated, post = triton_ihc_post_pre(
+                x,
+                residual,
+                post_gates,
+                pre.hc_fn.weight,
+                pre.hc_scale,
+                pre.hc_base,
+                pre.magnitude,
+                pre.hc_eps,
+                pre.layernorm_epsilon,
+            )
+            return output, post, updated
+        # Post has no layer parameters; pending gates belong to the predecessor.
+        post_layer = self.hc_mlp_layer if pre_attention else self.hc_attn_layer
+        updated = post_layer.post(x, residual, post_gates)
+        updated = pre_layer.prepare_input(updated)
+        return pre_layer.pre(updated)
+
     def _forward_ihc(
         self,
         positions: torch.Tensor,
         hidden_states: torch.Tensor,
-    ) -> tuple[torch.Tensor, None]:
-        """IHC forward: each sub-block reduces and re-scatters the channels."""
-        hidden_states = self.hc_attn_layer.prepare_input(hidden_states)
-        hidden_states, post_gates, residual = self.hc_attn_layer.pre(hidden_states)
+        pending: tuple[torch.Tensor, torch.Tensor] | None = None,
+    ) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor] | None]:
+        """Carry a pending MLP Post only between local eager iHC layers."""
+        if pending is None:
+            hidden_states = self.hc_attn_layer.prepare_input(hidden_states)
+            hidden_states, post_gates, residual = self.hc_attn_layer.pre(hidden_states)
+        else:
+            hidden_states, post_gates, residual = self._ihc_post_pre(
+                hidden_states, *pending, pre_attention=True
+            )
         hidden_states = self.input_layernorm(hidden_states)
         hidden_states = self.self_attn(
             positions=positions,
             hidden_states=hidden_states,
         )
-        hidden_states = self.hc_attn_layer.post(hidden_states, residual, post_gates)
-
-        hidden_states = self.hc_mlp_layer.prepare_input(hidden_states)
-        hidden_states, post_gates, residual = self.hc_mlp_layer.pre(hidden_states)
+        hidden_states, post_gates, residual = self._ihc_post_pre(
+            hidden_states, residual, post_gates
+        )
         hidden_states = self.post_attention_layernorm(hidden_states)
         hidden_states = self.mlp(hidden_states)
+        if self._ihc_defer_post and self._can_fuse_ihc(
+            hidden_states, residual, post_gates, self.hc_mlp_layer.hc_pre
+        ):
+            return hidden_states, (residual, post_gates)
         hidden_states = self.hc_mlp_layer.post(hidden_states, residual, post_gates)
 
         # Under iHC the residual is carried inside hidden_states.
@@ -258,6 +354,12 @@ class HYV4Model(nn.Module):
             ),
             prefix=f"{prefix}.layers",
         )
+        # Never carry pending Post state across PP transfer or into HCHead.
+        if self.enable_ihc:
+            for layer in islice(self.layers, self.start_layer, self.end_layer - 1):
+                layer._ihc_defer_post = (
+                    getattr(config, "enable_ihc_cross_layer_fusion", False) is True
+                )
         if get_pp_group().is_last_rank:
             self.norm = RMSNorm(config.hidden_size, config.rms_norm_eps)
         else:
