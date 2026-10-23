@@ -122,7 +122,7 @@ class HYV4DecoderLayer(nn.Module):
             and vllm_config.speculative_config is None
             and not envs.VLLM_BATCH_INVARIANT
             and current_platform.is_cuda()
-            and current_platform.get_device_name() == "NVIDIA H100 80GB HBM3"
+            and current_platform.is_device_capability(90)
         )
 
         self._ihc_defer_post = False
