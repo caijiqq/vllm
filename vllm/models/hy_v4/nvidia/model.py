@@ -111,14 +111,12 @@ class HYV4DecoderLayer(nn.Module):
         self.enable_ihc = getattr(config, "enable_ihc", False)
         layer_idx = int(prefix.split(".")[-1])
         self.layer_idx = layer_idx
-        # Read the experimental switch once. Compiled/automatic graph paths
-        # retain the original boundary: batch phase must not become a guard.
+        # Read the experimental switch once; dispatch checks tensor eligibility.
         self._ihc_fusion_enabled = (
             getattr(config, "enable_ihc_post_pre_fusion", False) is True
             and self.enable_ihc
             and config.hidden_size == 6144
             and config.hc_mult == 4
-            and vllm_config.model_config.enforce_eager
             and vllm_config.speculative_config is None
             and not envs.VLLM_BATCH_INVARIANT
             and current_platform.is_cuda()
@@ -230,6 +228,16 @@ class HYV4DecoderLayer(nn.Module):
             and is_forward_context_available()
         ):
             context = get_forward_context()
+            if context.ubatch_slices is not None:
+                return False
+            if context.cudagraph_runtime_mode != CUDAGraphMode.NONE:
+                # Graph keys do not encode prefill/decode counts or padding.
+                # This tokenwise operation must use the same route for every
+                # batch replaying this shape, including metadata-free capture.
+                return context.cudagraph_runtime_mode == CUDAGraphMode.FULL or (
+                    context.cudagraph_runtime_mode == CUDAGraphMode.PIECEWISE
+                    and envs.VLLM_USE_BREAKABLE_CUDAGRAPH
+                )
             metadata = context.attn_metadata
             attn = (
                 metadata.get(self.self_attn.mla_attn.layer_name)
@@ -243,8 +251,6 @@ class HYV4DecoderLayer(nn.Module):
                 and attn.num_decodes == 0
                 and attn.num_decode_tokens == 0
                 and attn.num_actual_tokens == x.shape[0]
-                and context.ubatch_slices is None
-                and context.cudagraph_runtime_mode == CUDAGraphMode.NONE
             ):
                 return True
         return False
@@ -277,7 +283,7 @@ class HYV4DecoderLayer(nn.Module):
         hidden_states: torch.Tensor,
         pending: tuple[torch.Tensor, torch.Tensor] | None = None,
     ) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor] | None]:
-        """Carry a pending MLP Post only between local eager iHC layers."""
+        """Carry a pending MLP Post only between local iHC layers."""
         if pending is None:
             hidden_states = self.hc_attn_layer.prepare_input(hidden_states)
             hidden_states, post_gates, residual = self.hc_attn_layer.pre(hidden_states)
