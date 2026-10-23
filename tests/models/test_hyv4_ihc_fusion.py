@@ -9,11 +9,11 @@ from types import SimpleNamespace
 
 import pytest
 import torch
-from transformers import PretrainedConfig
+from transformers import PreTrainedConfig
 
 from lab.ihc_fusion.baselines.official import official_post_pre
 from lab.ihc_fusion.reference.torch_post_pre import torch_post_pre
-from lab.ihc_fusion.tests.cases import check_outputs, make_case
+from lab.ihc_fusion.tests.cases import check_outputs, make_case, metrics
 from vllm.config import CUDAGraphMode
 from vllm.forward_context import ForwardContext, override_forward_context
 from vllm.model_executor.layers.attention.mla_attention import MLACommonMetadata
@@ -21,7 +21,7 @@ from vllm.models.hy_v4.nvidia import model as hy4
 from vllm.models.hy_v4.nvidia.hc import HYV4HCLayer
 from vllm.models.hy_v4.nvidia.triton_ihc_post_pre import triton_ihc_post_pre
 
-RECORDS = []
+RECORDS: list[dict[str, object]] = []
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -59,8 +59,12 @@ def context(n, kind="prefill"):
         return None
     if kind == "unknown":
         ctx.attn_metadata = {}
-    if kind == "graph":
+    if kind in ("graph", "graph_ubatch"):
         ctx.cudagraph_runtime_mode = CUDAGraphMode.FULL
+    if kind == "graph_ubatch":
+        ctx.ubatch_slices = []
+    if kind == "compiled_graph":
+        ctx.cudagraph_runtime_mode = CUDAGraphMode.PIECEWISE
     if kind == "ubatch":
         ctx.attn_metadata = [ctx.attn_metadata]
     return ctx
@@ -91,6 +95,12 @@ def test_kernel_and_updated_input_replay(n):
         (256, "prefill", torch.bfloat16, True, False),
         (511, "prefill", torch.bfloat16, True, False),
         (512, "prefill", torch.bfloat16, True, True),
+        (512, "graph", torch.bfloat16, True, True),
+        (511, "graph", torch.bfloat16, True, False),
+        (8193, "graph", torch.bfloat16, True, False),
+        (512, "graph", torch.float16, True, False),
+        (512, "graph_ubatch", torch.bfloat16, True, False),
+        (512, "compiled_graph", torch.bfloat16, True, False),
         (513, "prefill", torch.bfloat16, True, True),
         (8192, "prefill", torch.bfloat16, True, True),
         (8193, "prefill", torch.bfloat16, True, False),
@@ -105,7 +115,6 @@ def test_kernel_and_updated_input_replay(n):
                 "unknown",
                 "none",
                 "padding",
-                "graph",
                 "ubatch",
                 "layout",
                 "hidden",
@@ -117,13 +126,15 @@ def test_kernel_and_updated_input_replay(n):
 def test_boundary_routes_and_preserves_ownership(
     dist_init, monkeypatch, n, kind, dtype, enabled, expected, pre_attention
 ):
+    if kind == "compiled_graph":
+        monkeypatch.setenv("VLLM_USE_BREAKABLE_CUDAGRAPH", "0")
     d = 4096 if kind == "hidden" else 6144
     args = (*make_case(n, d, dtype)[:6], 2.0, 1e-6, 1e-5)
     if kind == "layout":
         x = torch.empty((n, d * 2), device="cuda", dtype=dtype)[:, ::2]
         x.copy_(args[0])
         args = (x, *args[1:])
-    config = PretrainedConfig(
+    config = PreTrainedConfig(
         enable_ihc=True,
         hidden_size=d,
         hc_mult=4,
@@ -167,11 +178,9 @@ class _TestAttention(torch.nn.Module):
         return hidden_states.tanh()
 
 
-@pytest.mark.parametrize("n", [128, 256, 512, 1024, 4096, 8192])
-def test_cross_layer_pending_chain(dist_init, monkeypatch, n):
-    """Distinct Pre parameters catch gate/weight ownership and missing final Post."""
+def make_layers():
     torch.manual_seed(7)
-    config = PretrainedConfig(
+    config = PreTrainedConfig(
         enable_ihc=True,
         hidden_size=6144,
         hc_mult=4,
@@ -195,6 +204,13 @@ def test_cross_layer_pending_chain(dist_init, monkeypatch, n):
                 hc.hc_pre.hc_fn.weight.normal_(std=0.002 * (1 + i + j))
                 hc.hc_pre.hc_base.fill_(0.1 * (i + j))
         layers.append(layer)
+    return layers
+
+
+@pytest.mark.parametrize("n", [128, 256, 512, 1024, 4096, 8192])
+def test_cross_layer_pending_chain(dist_init, monkeypatch, n):
+    """Distinct Pre parameters catch gate/weight ownership and missing final Post."""
+    layers = make_layers()
     x = make_case(n, 6144, torch.bfloat16)[1]
     positions = torch.arange(n, device="cuda")
     ctx = context(n)
@@ -241,11 +257,11 @@ def test_cross_layer_pending_chain(dist_init, monkeypatch, n):
     )
 
 
-@pytest.mark.parametrize("kind", ["disabled", "mixed", "graph"])
+@pytest.mark.parametrize("kind", ["disabled", "mixed", "padding"])
 def test_pending_post_falls_back_at_consumer(dist_init, kind):
     """A pending Post must be materialized even if the next layer cannot fuse."""
     args = make_case(512, 6144, torch.bfloat16)
-    config = PretrainedConfig(
+    config = PreTrainedConfig(
         enable_ihc=True,
         hidden_size=6144,
         hc_mult=4,
@@ -278,3 +294,235 @@ def test_pending_post_falls_back_at_consumer(dist_init, kind):
         actual, pending = layer(positions, args[0], (args[1], args[2]))
     assert pending is None
     torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
+    "name,capability,expected",
+    [
+        ("NVIDIA H100 80GB HBM3", (9, 0), True),
+        ("NVIDIA H200", (9, 0), True),
+        ("NVIDIA A100", (8, 0), False),
+        ("NVIDIA B200", (10, 0), False),
+        ("unknown", None, False),
+    ],
+)
+def test_architecture_dispatch(dist_init, monkeypatch, name, capability, expected):
+    """Exercise constructor and dispatch without loading Attention/MLP weights."""
+    from vllm.platforms.interface import DeviceCapability
+
+    monkeypatch.setattr(hy4.current_platform, "get_device_name", lambda: name)
+    monkeypatch.setattr(
+        type(hy4.current_platform),
+        "get_device_capability",
+        classmethod(
+            lambda cls, device_id=0: (
+                DeviceCapability(*capability) if capability else None
+            )
+        ),
+    )
+    monkeypatch.setattr(hy4, "HYV4MLAAttention", lambda **kw: _TestAttention("attn"))
+    monkeypatch.setattr(hy4, "HYV4FeedForward", lambda **kw: torch.nn.Identity())
+    config = PreTrainedConfig(
+        enable_ihc=True,
+        enable_ihc_post_pre_fusion=True,
+        hidden_size=6144,
+        hc_mult=4,
+        hc_magnitude=2.0,
+        hc_eps=1e-6,
+        rms_norm_eps=1e-5,
+        num_attention_heads=1,
+        qk_nope_head_dim=1,
+        qk_rope_head_dim=2,
+        v_head_dim=1,
+        q_lora_rank=None,
+        kv_lora_rank=1,
+        mlp_layer_types=["dense"],
+        intermediate_size=16,
+        hidden_act="silu",
+    )
+    layer = hy4.HYV4DecoderLayer(
+        config,
+        SimpleNamespace(
+            model_config=SimpleNamespace(enforce_eager=False), speculative_config=None
+        ),
+        prefix="layers.0",
+    ).cuda()
+    assert layer._ihc_fusion_enabled == expected
+    args = make_case(512, 6144, torch.bfloat16)
+    pre = layer.hc_mlp_layer.hc_pre
+    with torch.no_grad():
+        pre.hc_fn.weight.copy_(args[3])
+        pre.hc_scale.copy_(args[4])
+        pre.hc_base.copy_(args[5])
+    calls = []
+
+    def fused(*inputs):
+        calls.append(True)
+        return triton_ihc_post_pre(*inputs)
+
+    monkeypatch.setattr(hy4, "triton_ihc_post_pre", fused)
+    with override_forward_context(context(512, "graph")):
+        output, post, residual = layer._ihc_post_pre(*args[:3])
+    assert bool(calls) == expected
+    check_outputs(
+        (output, residual, post), official_post_pre(*args[:6], 2.0, 1e-6, 1e-5)
+    )
+
+
+@pytest.mark.parametrize("n", [128, 512, 1024])
+@pytest.mark.parametrize("graph_kind", ["full", "breakable"])
+@pytest.mark.parametrize("boundary", ["chain", "consumer_off", "pp"])
+@torch.inference_mode()
+def test_graph_chain_replay(dist_init, monkeypatch, n, graph_kind, boundary):
+    """Replay new inputs through real wrappers, including pending across breaks."""
+    from vllm.compilation.breakable_cudagraph import (
+        BreakableCUDAGraphCapture,
+        BreakableCUDAGraphWrapper,
+    )
+    from vllm.compilation.cuda_graph import CUDAGraphWrapper
+    from vllm.config import VllmConfig
+    from vllm.forward_context import BatchDescriptor
+
+    monkeypatch.setenv("VLLM_USE_BREAKABLE_CUDAGRAPH", "1")
+    layers = make_layers()
+    positions = torch.arange(n, device="cuda")
+    x = make_case(n, 6144, torch.bfloat16)[1]
+    mode = CUDAGraphMode.FULL if graph_kind == "full" else CUDAGraphMode.PIECEWISE
+    ctx = context(n)
+    ctx.cudagraph_runtime_mode = mode
+    ctx.batch_descriptor = BatchDescriptor(num_tokens=n)
+    ctx.attn_metadata = None  # Real piecewise warmup/capture has no metadata.
+    calls = []
+
+    def fused(*args):
+        calls.append(args[3].data_ptr())
+        return triton_ihc_post_pre(*args)
+
+    monkeypatch.setattr(hy4, "triton_ihc_post_pre", fused)
+
+    if graph_kind == "breakable":
+
+        def attention(positions, hidden_states):
+            out = torch.empty_like(hidden_states)
+
+            def run():
+                torch.tanh(hidden_states, out=out)
+
+            cap = BreakableCUDAGraphCapture.current()
+            if cap is not None:
+                cap.add_eager(run)
+            else:
+                run()
+            return out
+
+        for layer in layers:
+            monkeypatch.setattr(layer.self_attn, "forward", attention)
+
+    def set_mode(enabled):
+        for i, layer in enumerate(layers):
+            layer._ihc_fusion_enabled = enabled and not (
+                boundary == "consumer_off" and i == 1
+            )
+            layer._ihc_defer_post = (
+                enabled and i < 2 and not (boundary == "pp" and i == 0)
+            )
+
+    def forward(value):
+        hidden, pending = value, None
+        for i, layer in enumerate(layers):
+            if boundary == "pp" and i == 1:
+                assert pending is None
+                hidden = hidden.flatten(1)  # PP receive contract.
+            hidden, pending = layer(positions, hidden, pending)
+        assert pending is None
+        return hidden
+
+    wrappers = []
+    counts = []
+    numerical_failures = []
+    with override_forward_context(ctx):
+        for enabled in (False, True):
+            set_mode(enabled)
+            for _ in range(3):
+                forward(x)
+            wrapper_cls = (
+                CUDAGraphWrapper if graph_kind == "full" else BreakableCUDAGraphWrapper
+            )
+            wrapper = wrapper_cls(forward, VllmConfig(), runtime_mode=mode)
+            wrapper.graph_pool = torch.cuda.graph_pool_handle()
+            stream = torch.cuda.Stream()
+            stream.wait_stream(torch.cuda.current_stream())
+            calls.clear()
+            with torch.cuda.stream(stream):
+                wrapper(x)
+            torch.cuda.current_stream().wait_stream(stream)
+            counts.append(len(calls))
+            wrappers.append(wrapper)
+        expected = (
+            (5 if boundary == "chain" else 4 if boundary == "pp" else 2)
+            if n >= 512
+            else 0
+        )
+        assert counts == [0, expected]
+        for step, kind in enumerate(("prefill", "mixed", "padding", "decode")):
+            x.copy_(torch.roll(x, 1, 0).neg() * (0.9 + 0.01 * step))
+            metadata = context(n, kind).attn_metadata["attn"]
+            ctx.attn_metadata = {f"attn{i}": metadata for i in range(3)}
+            before = len(calls)
+            off = wrappers[0](x).clone()
+            on = wrappers[1](x).clone()
+            assert len(calls) == before  # Replay must not re-enter Python dispatch.
+            torch.testing.assert_close(wrappers[1](x), on, rtol=0, atol=0)
+            set_mode(False)
+            torch.testing.assert_close(off, forward(x), rtol=0, atol=0)
+            set_mode(True)
+            eager = forward(x)
+            torch.testing.assert_close(on, eager, rtol=0, atol=0)
+            if kind == "prefill":
+                ctx.cudagraph_runtime_mode = CUDAGraphMode.NONE
+                torch.testing.assert_close(on, forward(x), rtol=0, atol=0)
+                ctx.cudagraph_runtime_mode = mode
+            strict_pass = True
+            try:
+                torch.testing.assert_close(
+                    on, off, rtol=2 * torch.finfo(torch.bfloat16).eps, atol=2e-5
+                )
+            except AssertionError as error:
+                strict_pass = False
+                numerical_failures.append(str(error))
+            RECORDS.append(
+                dict(
+                    n=n,
+                    graph=graph_kind,
+                    boundary=boundary,
+                    batch=kind,
+                    strict_pass=strict_pass,
+                    graph_eager_exact=True,
+                    errors=metrics(on, off),
+                    cosine=torch.nn.functional.cosine_similarity(
+                        on.double().flatten(), off.double().flatten(), dim=0
+                    ).item(),
+                )
+            )
+        with torch.profiler.profile(
+            activities=[
+                torch.profiler.ProfilerActivity.CPU,
+                torch.profiler.ProfilerActivity.CUDA,
+            ]
+        ) as prof:
+            wrappers[1](x)
+            torch.accelerator.synchronize()
+        names = [
+            e.name
+            for e in prof.events()
+            if e.device_type == torch.autograd.DeviceType.CUDA
+        ]
+        assert sum("_fused_post_pre" in name for name in names) == expected, names
+        for kernel in ("_ihc_pre_stage1", "_ihc_pre_stage2", "_ihc_post_kernel"):
+            assert sum(kernel in name for name in names) == 6 - expected, names
+        if path := os.getenv("HY4_FUSION_TRACE_DIR"):
+            prof.export_chrome_trace(
+                str(Path(path) / f"{graph_kind}_{boundary}_{n}.json")
+            )
+
+        assert not numerical_failures, numerical_failures
