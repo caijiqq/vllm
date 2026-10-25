@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
-"""H100 CUDA Graph benchmark; run as a module from the repository root."""
+"""Preallocated Official/Single (optional Two-Stage) kernel A/B; no Runtime Cross."""
 
 import argparse
 import functools
@@ -25,12 +25,9 @@ from lab.ihc_fusion.baselines.official import (
     official_post_pre_into,
     provenance,
 )
-from lab.ihc_fusion.kernels.fused_post_pre import _fused_post_pre, fused_post_pre
+from lab.ihc_fusion.kernels.fused_post_pre import fused_post_pre
 from lab.ihc_fusion.reference.torch_post_pre import torch_post_pre
 from lab.ihc_fusion.tests.cases import DTYPES, check_outputs, make_case
-
-ROOT = Path(__file__).resolve().parents[3]
-LAB = ROOT / "lab/ihc_fusion"
 
 
 def baseline_call(*args):
@@ -39,6 +36,12 @@ def baseline_call(*args):
 
 def fused_call(*args, num_warps):
     fused_post_pre(*args[:9], out=args[9], num_warps=num_warps)
+
+
+def two_call(*args, num_warps=8):
+    from lab.ihc_fusion.kernels.decode_two_stage import decode_two_stage
+
+    decode_two_stage(*args[:9], out=args[9], partial=args[10], num_warps=num_warps)
 
 
 def package_version(name):
@@ -57,12 +60,22 @@ def get_timer():
     return "CUDA Events + CUDA Graph, cold L2 rotating buffers (CUPTI absent)", None
 
 
-def time_call(fn, inputs, repeat_ms, timer):
+def time_call(fn, inputs, repeat_ms, timer, *, cold=True):
     tensors = list(inputs[:6]) + list(inputs[9]) + [inputs[10]]
     rotations = calculate_rotation_count(tensors, torch.device("cuda"))
     # Cover a whole rotation cycle. Ten calls would leave decode weights in L2.
     calls = rotations * math.ceil(32 / rotations)
-    if timer is not None:
+    if not cold:
+        calls = 32
+        samples = bench_gpu_time_with_cudagraph(
+            fn,
+            input_args=inputs,
+            cold_l2_cache=False,
+            num_iters_within_graph=calls,
+            dry_run_time_ms=25,
+            repeat_time_ms=repeat_ms,
+        )
+    elif timer is not None:
         samples = timer(
             fn,
             input_args=inputs,
@@ -81,225 +94,142 @@ def time_call(fn, inputs, repeat_ms, timer):
             repeat_time_ms=repeat_ms,
         )
     return {
+        "samples_us": [sample * 1000 for sample in samples],
         "median_us": statistics.median(samples) * 1000,
         "p10_us": sorted(samples)[int(0.1 * (len(samples) - 1))] * 1000,
         "p90_us": sorted(samples)[int(0.9 * (len(samples) - 1))] * 1000,
         "graph_replays": len(samples),
-        "calls_per_graph": calls,
+        "calls_per_graph": calls if timer is None or not cold else None,
         "rotations": rotations,
     }
 
 
-def compiled_resources():
-    result = []
-    for cache in _fused_post_pre.device_caches.values():
-        for kernel in cache[0].values():
-            result.append(
-                {
-                    "hash": kernel.hash,
-                    "registers_per_thread": kernel.n_regs,
-                    "spill_count": kernel.n_spills,
-                    "shared_bytes": kernel.metadata.shared,
-                    "num_warps": kernel.metadata.num_warps,
-                    "constants": {str(k): v for k, v in kernel.src.constants.items()},
-                    "signature": {
-                        str(k): str(v) for k, v in kernel.src.signature.items()
-                    },
-                    "ptx_local_loads": kernel.asm["ptx"].count("ld.local"),
-                    "ptx_local_stores": kernel.asm["ptx"].count("st.local"),
-                }
-            )
-    return result
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--tokens", default="1,8,32,128,1024,4096")
-    parser.add_argument("--hidden", default="4096,7168")
-    parser.add_argument("--dtypes", default="float32,bfloat16,float16")
-    parser.add_argument(
-        "--warps",
-        default="default",
-        help="default, or comma-separated coarse-sweep candidates",
-    )
+    parser.add_argument("--tokens", default="128,513,8192")
+    parser.add_argument("--hidden", default="6144")
+    parser.add_argument("--dtypes", default="bfloat16")
+    parser.add_argument("--warps", default="default")
+    parser.add_argument("--two-stage", action="store_true")
+    parser.add_argument("--two-warps", type=int, default=8)
+    parser.add_argument("--cache", choices=("cold", "hot", "both"), default="cold")
+    parser.add_argument("--magnitude", type=float, default=1.7)
+    parser.add_argument("--hc-eps", type=float, default=2e-6)
+    parser.add_argument("--warmup", type=int, default=30)
     parser.add_argument("--rounds", type=int, default=3)
     parser.add_argument("--repeat-ms", type=int, default=100)
-    parser.add_argument(
-        "--output", type=Path, default=LAB / "results/h100_benchmark.json"
-    )
-    options = parser.parse_args()
-    if not options.output.resolve().is_relative_to(LAB):
-        parser.error("Output must remain inside lab/ihc_fusion")
+    parser.add_argument("--output", type=Path, required=True)
+    opt = parser.parse_args()
+    if opt.warmup < 0 or min(opt.rounds, opt.repeat_ms) < 1:
+        parser.error("warmup >= 0 and positive rounds/repeat-ms required")
+    opt.output.parent.mkdir(parents=True, exist_ok=True)
     torch.backends.cuda.matmul.allow_tf32 = False
-    torch.backends.cudnn.allow_tf32 = False
     timer_name, timer = get_timer()
-    device = torch.cuda.get_device_properties(0)
-    metadata = {
-        "command": " ".join(sys.argv),
-        "gpu": device.name,
-        "compute_capability": list(torch.cuda.get_device_capability(0)),
-        "total_memory": device.total_memory,
-        "pytorch": torch.__version__,
-        "triton": triton.__version__,
-        "cuda": torch.version.cuda,
-        "flashinfer": package_version("flashinfer-python"),
-        "python": sys.version,
-        "timer": timer_name,
-        "branch": subprocess.check_output(
-            ["git", "branch", "--show-current"], cwd=ROOT, text=True
-        ).strip(),
-        "commit": subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
-        ).strip(),
-        "official": provenance(),
-        "warmup_calls": 30,
-        "graph_warmup_ms": 25,
-        "repeat_ms_per_round": options.repeat_ms,
-        "rounds": options.rounds,
-        "input_seed": 20261021,
-        "activation_semantics": "FP32 is Lab direct-call extension; BF16/FP16 official",
-        "allocation_in_timing": False,
-        "baseline_launches": 3,
-        "fused_launches": 1,
-        "baseline_config": "fixed original: Post 4 warps, Pre stage1 8, stage2 4",
-        "environment": {
-            k: os.environ.get(k)
-            for k in [
-                "CUDA_VISIBLE_DEVICES",
-                "TRITON_CACHE_DIR",
-                "CUDA_MODULE_LOADING",
-            ]
-        },
-        "source_hashes": {
-            str(p.relative_to(LAB)): hashlib.sha256(p.read_bytes()).hexdigest()
-            for p in [
-                LAB / "kernels/fused_post_pre.py",
-                LAB / "baselines/official.py",
-                LAB / "reference/torch_post_pre.py",
-                LAB / "tests/cases.py",
-                LAB / "tests/test_post_pre.py",
-                Path(__file__),
-            ]
-        },
-        "nvidia_smi_before": subprocess.check_output(
-            [
-                "nvidia-smi",
-                "--query-gpu=index,uuid,name,driver_version,temperature.gpu,"
-                "utilization.gpu,memory.used,clocks.sm,clocks.mem,power.draw",
-                "--format=csv",
-            ],
-            text=True,
+    doc = dict(
+        metadata=dict(
+            options=vars(opt),
+            source_sha256={
+                str(p): hashlib.sha256(p.read_bytes()).hexdigest()
+                for p in (
+                    Path(__file__),
+                    Path("lab/ihc_fusion/kernels/fused_post_pre.py"),
+                    Path("lab/ihc_fusion/kernels/decode_two_stage.py"),
+                    Path("tests/models/test_hyv4_ihc_fusion.py"),
+                )
+            },
+            command=sys.argv,
+            gpu=torch.cuda.get_device_name(),
+            gpu_selection=os.getenv("CUDA_VISIBLE_DEVICES"),
+            torch=torch.__version__,
+            triton=triton.__version__,
+            cuda=torch.version.cuda,
+            official=provenance(),
+            timer=timer_name,
+            hot_timer="CUDA Events + CUDA Graph, 32 calls, hot L2",
+            graph_warmup_ms=25,
+            seed=20261021,
+            allocation_in_timing=False,
+            commit=subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], text=True
+            ).strip(),
         ),
-    }
-    rows = []
-    doc = {"metadata": metadata, "rows": rows}
-    print(timer_name, flush=True)
-    for dtype_name in options.dtypes.split(","):
-        for hidden in map(int, options.hidden.split(",")):
-            for tokens in map(int, options.tokens.split(",")):
-                args = make_case(tokens, hidden, DTYPES[dtype_name])
-                official = official_post_pre(*args)
-                golden = torch_post_pre(*args)
-                baseline_error = check_outputs(official, golden)
-                out_baseline = tuple(torch.empty_like(t) for t in official)
-                out_fused = tuple(torch.empty_like(t) for t in official)
-                partial = torch.empty(
-                    (tokens, triton.cdiv(4 * hidden, 1024), 9),
-                    dtype=torch.float32,
-                    device="cuda",
-                )
-                baseline_inputs = (*args, out_baseline, partial)
-                fused_inputs = (*args, out_fused, partial)
-                baseline_call(*baseline_inputs)
-                for actual, expected in zip(out_baseline, official):
-                    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
-                warps = (
-                    [None]
-                    if options.warps == "default"
-                    else list(map(int, options.warps.split(",")))
-                )
-                functions = {"baseline": (baseline_call, baseline_inputs)}
-                errors = {}
-                for warp in warps:
-                    label = "default" if warp is None else str(warp)
-                    fn = functools.partial(fused_call, num_warps=warp)
-                    fn(*fused_inputs)
-                    errors[label] = {
-                        "vs_golden": check_outputs(out_fused, golden),
-                        "vs_official": check_outputs(out_fused, official),
-                    }
-                    functions[label] = fn, fused_inputs
-                for fn, inputs in functions.values():
-                    for _ in range(30):
-                        fn(*inputs)
-                torch.cuda.synchronize()
-                timings = {label: [] for label in functions}
-                for round_index in range(options.rounds):
-                    order = list(functions)
-                    if round_index % 2:
-                        order.reverse()
-                    for label in order:
-                        fn, inputs = functions[label]
-                        timings[label].append(
-                            time_call(fn, inputs, options.repeat_ms, timer)
-                        )
-                baseline_us = statistics.median(
-                    t["median_us"] for t in timings["baseline"]
-                )
-                for label in errors:
-                    fused_us = statistics.median(t["median_us"] for t in timings[label])
-                    # Lower-bound boundary traffic: read x, R, prev gates and
-                    # next params once; write next x, R and gates once. Weight
-                    # reuse across tokens means this is not actual HBM traffic.
-                    boundary_bytes = (
-                        2 * tokens * hidden * DTYPES[dtype_name].itemsize
-                        + 2 * tokens * 4 * hidden * DTYPES[dtype_name].itemsize
-                        + 2 * tokens * 4 * 4
-                        + 8 * 4 * hidden * 4
-                        + 10 * 4
-                    )
-                    row = {
-                        "dtype": dtype_name,
-                        "tokens": tokens,
-                        "hidden": hidden,
-                        "channels": 4,
-                        "num_warps": label,
-                        "effective_num_warps": (16 if tokens <= 128 else 4)
-                        if label == "default"
-                        else int(label),
-                        "baseline_us": baseline_us,
-                        "fused_us": fused_us,
-                        "speedup": baseline_us / fused_us,
-                        "boundary_min_bytes": boundary_bytes,
-                        "baseline_boundary_gbps": boundary_bytes / baseline_us / 1000,
-                        "fused_boundary_gbps": boundary_bytes / fused_us / 1000,
-                        "errors": errors[label],
-                        "baseline_vs_golden": baseline_error,
-                        "baseline_rounds": timings["baseline"],
-                        "fused_rounds": timings[label],
-                    }
-                    rows.append(row)
-                    print(
-                        f"{dtype_name:8s} N={tokens:4d} D={hidden} warps={label:7s} "
-                        f"baseline={baseline_us:.3f}us fused={fused_us:.3f}us "
-                        f"speedup={row['speedup']:.3f}",
-                        flush=True,
-                    )
-                doc["compiled_resources"] = compiled_resources()
-                options.output.write_text(json.dumps(doc, indent=2, default=str) + "\n")
-                del args, official, golden, out_baseline, out_fused, partial
-                del baseline_inputs, fused_inputs, functions
-                torch.cuda.empty_cache()
-    metadata["nvidia_smi_after"] = subprocess.check_output(
-        [
-            "nvidia-smi",
-            "--query-gpu=index,uuid,name,temperature.gpu,utilization.gpu,"
-            "memory.used,clocks.sm,clocks.mem,power.draw",
-            "--format=csv",
-        ],
-        text=True,
+        rows=[],
     )
-    options.output.write_text(json.dumps(doc, indent=2, default=str) + "\n")
+    functions = {"official": baseline_call}
+    for warp in opt.warps.split(","):
+        functions["single_" + warp] = functools.partial(
+            fused_call, num_warps=None if warp == "default" else int(warp)
+        )
+    if opt.two_stage:
+        functions["two"] = functools.partial(two_call, num_warps=opt.two_warps)
+    for dtype in opt.dtypes.split(","):
+        for d in map(int, opt.hidden.split(",")):
+            for n in map(int, opt.tokens.split(",")):
+                args = (
+                    *make_case(n, d, DTYPES[dtype])[:6],
+                    opt.magnitude,
+                    opt.hc_eps,
+                    1e-5,
+                )
+                official, golden = official_post_pre(*args), torch_post_pre(*args)
+                check_outputs(official, golden)
+                inputs, errors = {}, {}
+                for name, fn in functions.items():
+                    out = tuple(torch.empty_like(t) for t in official)
+                    partial = torch.empty(
+                        (n, triton.cdiv(4 * d, 1024), 9), device="cuda"
+                    )
+                    inputs[name] = (*args, out, partial)
+                    fn(*inputs[name])
+                    if name == "official":
+                        for a, b in zip(out, official):
+                            torch.testing.assert_close(a, b, rtol=0, atol=0)
+                    errors[name] = dict(
+                        golden=check_outputs(out, golden),
+                        official=check_outputs(out, official),
+                    )
+                    for _ in range(opt.warmup):
+                        fn(*inputs[name])
+                torch.cuda.synchronize()
+                for cache in ["cold", "hot"] if opt.cache == "both" else [opt.cache]:
+                    timings = {name: [] for name in functions}
+                    for step in range(opt.rounds):
+                        names = list(functions)
+                        offset = step % len(names)
+                        for name in names[offset:] + names[:offset]:
+                            timings[name].append(
+                                time_call(
+                                    functions[name],
+                                    inputs[name],
+                                    opt.repeat_ms,
+                                    timer,
+                                    cold=cache == "cold",
+                                )
+                            )
+                    medians = {
+                        name: statistics.median(t["median_us"] for t in samples)
+                        for name, samples in timings.items()
+                    }
+                    doc["rows"].append(
+                        dict(
+                            tokens=n,
+                            hidden=d,
+                            dtype=dtype,
+                            cache=cache,
+                            timings=timings,
+                            errors=errors,
+                            median_us=medians,
+                        )
+                    )
+                    for name, us in medians.items():
+                        print(
+                            f"N={n} D={d} {dtype} {cache} {name}: {us:.3f} us; "
+                            f"speedup={medians['official'] / us:.3f}x",
+                            flush=True,
+                        )
+                    opt.output.write_text(json.dumps(doc, indent=2, default=str) + "\n")
+                del inputs, args, official, golden, out, partial
+                torch.cuda.empty_cache()
 
 
 if __name__ == "__main__":

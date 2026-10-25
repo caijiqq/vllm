@@ -231,13 +231,9 @@ class HYV4DecoderLayer(nn.Module):
             if context.ubatch_slices is not None:
                 return False
             if context.cudagraph_runtime_mode != CUDAGraphMode.NONE:
-                # Graph keys do not encode prefill/decode counts or padding.
-                # This tokenwise operation must use the same route for every
-                # batch replaying this shape, including metadata-free capture.
-                return context.cudagraph_runtime_mode == CUDAGraphMode.FULL or (
-                    context.cudagraph_runtime_mode == CUDAGraphMode.PIECEWISE
-                    and envs.VLLM_USE_BREAKABLE_CUDAGRAPH
-                )
+                # Graph keys cannot guarantee unpadded, pure Prefill on replay.
+                # Capture-time metadata must not enable fusion for a shared key.
+                return False
             metadata = context.attn_metadata
             attn = (
                 metadata.get(self.self_attn.mla_attn.layer_name)

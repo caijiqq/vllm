@@ -1,12 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
-"""Check the public Lab boundary, not model/runtime dispatch.
-
-Contract: previous x/residual/gates and next parameters produce next single
-stream, rounded residual, and FP32 gates. Guard against wrong ownership, removed
-Post rounding, bad masks, reordered gates and channel accumulation. Direct GPU
-operator comparisons are the cheapest level that exercises the Triton math.
-"""
+"""Production BF16/C4/D6144 math, independent references and actual GPU launches."""
 
 import json
 import os
@@ -16,172 +10,91 @@ import pytest
 import torch
 
 from lab.ihc_fusion.baselines.official import (
-    OFFICIAL,
     official_post_pre,
     official_post_pre_into,
     provenance,
 )
+from lab.ihc_fusion.kernels.fused_post_pre import fused_post_pre
 from lab.ihc_fusion.reference.torch_post_pre import torch_post_pre
-from lab.ihc_fusion.tests.cases import DTYPES, check_outputs, make_case
+from lab.ihc_fusion.tests.cases import check_outputs, make_case
+from vllm.models.hy_v4.nvidia.triton_ihc_post_pre import triton_ihc_post_pre
 
 RECORDS = []
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def numeric_environment():
+    previous = torch.backends.cuda.matmul.allow_tf32
     torch.backends.cuda.matmul.allow_tf32 = False
-    torch.backends.cudnn.allow_tf32 = False
     yield
-    if path := os.environ.get("IHC_CORRECTNESS_JSON"):
-        Path(path).write_text(
-            json.dumps({"provenance": provenance(), "cases": RECORDS}, indent=2) + "\n"
-        )
+    torch.backends.cuda.matmul.allow_tf32 = previous
+    if path := os.getenv("IHC_CORRECTNESS_JSON"):
+        Path(path).write_text(json.dumps(dict(provenance=provenance(), cases=RECORDS)))
 
 
-def candidate(*args):
-    if os.environ.get("IHC_TEST_BASELINE_ONLY") == "1":
-        return official_post_pre(*args)
-    from lab.ihc_fusion.kernels.fused_post_pre import fused_post_pre
-
-    return fused_post_pre(*args)
-
-
-@pytest.mark.parametrize("dtype", DTYPES.values(), ids=DTYPES.keys())
 @pytest.mark.parametrize(
-    "tokens,hidden",
-    [
-        (0, 128),
-        (1, 128),
-        (3, 257),
-        (17, 1024),
-        (33, 3072),
-        (1, 4096),
-        (7, 7168),
-        (2, 8192),
-        (257, 4096),
-    ],
+    "n,kind",
+    [(n, "random") for n in (128, 513, 8192)]
+    + [(5, kind) for kind in ("zero", "tiny", "large", "cancel", "saturated")],
 )
-def test_shapes(dtype, tokens, hidden):
-    args = make_case(tokens, hidden, dtype)
-    golden = torch_post_pre(*args)
-    baseline = official_post_pre(*args)
-    actual = candidate(*args)
-    baseline_error = check_outputs(baseline, golden)
-    golden_error = check_outputs(actual, golden)
-    official_error = check_outputs(actual, baseline)
-    RECORDS.append(
-        {
-            "dtype": str(dtype),
-            "tokens": tokens,
-            "hidden": hidden,
-            "kind": "random",
-            "baseline_vs_golden": baseline_error,
-            "fused_vs_golden": golden_error,
-            "fused_vs_official": official_error,
-        }
+def test_numerical(n, kind):
+    args = (
+        *make_case(n, 6144, torch.bfloat16, kind=kind, offset=True)[:6],
+        2.0,
+        1e-6,
+        1e-5,
     )
-
-
-@pytest.mark.parametrize("dtype", DTYPES.values(), ids=DTYPES.keys())
-@pytest.mark.parametrize("kind", ["zero", "tiny", "large", "cancel", "saturated"])
-def test_numerical_boundaries(dtype, kind):
-    args = make_case(5, 1025, dtype, kind=kind, offset=True)
-    golden, baseline = torch_post_pre(*args), official_post_pre(*args)
-    actual = candidate(*args)
-    baseline_error = check_outputs(baseline, golden)
-    golden_error = check_outputs(actual, golden)
-    official_error = check_outputs(actual, baseline)
+    baseline, golden = official_post_pre(*args), torch_post_pre(*args)
+    actual = triton_ihc_post_pre(*args)
     RECORDS.append(
-        {
-            "dtype": str(dtype),
-            "tokens": 5,
-            "hidden": 1025,
-            "kind": kind,
-            "offset": True,
-            "baseline_vs_golden": baseline_error,
-            "fused_vs_golden": golden_error,
-            "fused_vs_official": official_error,
-        }
+        dict(
+            n=n,
+            kind=kind,
+            baseline_vs_golden=check_outputs(baseline, golden),
+            fused_vs_golden=check_outputs(actual, golden),
+            fused_vs_official=check_outputs(actual, baseline),
+        )
     )
+    check_outputs(fused_post_pre(*args), baseline)  # Preallocated benchmark variant.
+    if n == 513:
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph):
+            captured = triton_ihc_post_pre(*args)
+        args[0].neg_()
+        graph.replay()
+        check_outputs(captured, official_post_pre(*args))
+        check_outputs(captured, torch_post_pre(*args))
 
 
 def test_preallocated_baseline_matches_official_wrappers():
-    args = make_case(7, 257, torch.bfloat16, offset=True)
+    args = make_case(7, 6144, torch.bfloat16, offset=True)
     expected = official_post_pre(*args)
     out = tuple(torch.empty_like(tensor) for tensor in expected)
-    partial = torch.empty((7, 2, 9), device="cuda", dtype=torch.float32)
+    partial = torch.empty((7, 24, 9), device="cuda", dtype=torch.float32)
     actual = official_post_pre_into(*args, out=out, partial=partial)
     for a, b in zip(actual, expected):
         torch.testing.assert_close(a, b, rtol=0, atol=0)
-    assert OFFICIAL._ihc_pre_stage1.__class__.__name__ == "JITFunction"
-    assert OFFICIAL._ihc_pre_stage2.__class__.__name__ == "JITFunction"
-    assert OFFICIAL._ihc_post_kernel.__class__.__name__ == "JITFunction"
 
 
-@pytest.mark.parametrize("dtype", DTYPES.values(), ids=DTYPES.keys())
-@pytest.mark.parametrize("tokens,hidden", [(1024, 3072), (4096, 7168)])
-def test_prefill(dtype, tokens, hidden):
-    args = make_case(tokens, hidden, dtype)
-    baseline, golden = official_post_pre(*args), torch_post_pre(*args)
-    actual = candidate(*args)
-    RECORDS.append(
-        {
-            "dtype": str(dtype),
-            "tokens": tokens,
-            "hidden": hidden,
-            "kind": "prefill",
-            "baseline_vs_golden": check_outputs(baseline, golden),
-            "fused_vs_golden": check_outputs(actual, golden),
-            "fused_vs_official": check_outputs(actual, baseline),
-        }
-    )
-
-
-@pytest.mark.parametrize("channels,hidden", [(1, 1), (3, 63), (4, 255)])
-def test_mask_and_channel_boundaries(channels, hidden):
-    args = make_case(3, hidden, torch.bfloat16, channels=channels, offset=True)
-    actual = candidate(*args)
-    check_outputs(actual, torch_post_pre(*args))
-    check_outputs(actual, official_post_pre(*args))
-
-
-def test_preallocated_fused_has_one_gpu_launch():
-    from lab.ihc_fusion.kernels.fused_post_pre import fused_post_pre
-
-    args = make_case(3, 1025, torch.bfloat16)
-    expected = official_post_pre(*args)
-    out = tuple(torch.empty_like(t) for t in expected)
-    for _ in range(3):
-        fused_post_pre(*args, out=out)
-    torch.cuda.synchronize()
-    with torch.profiler.profile(
-        activities=[torch.profiler.ProfilerActivity.CUDA]
-    ) as prof:
-        fused_post_pre(*args, out=out)
+def test_gpu_launches():
+    args = make_case(513, 6144, torch.bfloat16)
+    launches = {}
+    for fn, count in ((triton_ihc_post_pre, 1), (official_post_pre, 3)):
+        for _ in range(3):
+            fn(*args)
         torch.cuda.synchronize()
-    kernels = [
-        event.name
-        for event in prof.events()
-        if event.device_type == torch.autograd.DeviceType.CUDA
-    ]
-    assert len(kernels) == 1, kernels
-    assert "_fused_post_pre" in kernels[0]
-    check_outputs(out, expected)
-    with torch.profiler.profile(
-        activities=[torch.profiler.ProfilerActivity.CUDA]
-    ) as prof:
-        official_post_pre(*args)
-        torch.cuda.synchronize()
-    baseline = [
-        event.name
-        for event in prof.events()
-        if event.device_type == torch.autograd.DeviceType.CUDA
-    ]
-    assert len(baseline) == 3, baseline
-    if path := os.environ.get("IHC_LAUNCH_JSON"):
-        Path(path).write_text(
-            json.dumps(
-                {"fused_kernels": kernels, "official_kernels": baseline}, indent=2
-            )
-            + "\n"
-        )
+        with torch.profiler.profile(
+            activities=[torch.profiler.ProfilerActivity.CUDA]
+        ) as prof:
+            fn(*args)
+            torch.cuda.synchronize()
+        names = [
+            e.name
+            for e in prof.events()
+            if e.device_type == torch.autograd.DeviceType.CUDA
+        ]
+        assert len(names) == count, names
+        launches[fn.__name__] = names
+    assert "_fused_post_pre" in launches[triton_ihc_post_pre.__name__][0]
+    if path := os.getenv("IHC_LAUNCH_JSON"):
+        Path(path).write_text(json.dumps(launches))

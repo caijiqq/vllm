@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+
 """Analyze saved TP4/TP8 timing and traces using only the standard library."""
 
 import argparse
@@ -5,20 +8,20 @@ import csv
 import json
 import math
 import statistics
-from collections import Counter, defaultdict
+from collections import Counter
 from itertools import combinations
 from pathlib import Path
 
 
 def write(output, name, obj):
-    with (output / name).open("x") as f:
+    with (output / name).open("w") as f:
         json.dump(obj, f, indent=2)
 
 
 def csvwrite(output, name, rows):
     if not rows:
         return
-    with (output / name).open("x", newline="") as f:
+    with (output / name).open("w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
@@ -42,180 +45,41 @@ def stats(vals):
     )
 
 
-def union(rows):
-    total = 0
-    end = float("-inf")
-    for a, b in sorted((g["start_us"], g["start_us"] + g["duration_us"]) for g in rows):
-        total += max(0, b - max(a, end))
-        end = max(end, b)
-    return total
-
-
-def trace(path, output, layers):
+def trace(path):
     events = json.loads(path.read_text())["traceEvents"]
-    tags = [
+    scopes = [
         e
         for e in events
         if e.get("cat") == "user_annotation"
-        and e["name"].startswith(("TP4/", "TP8/"))
+        and e["name"] in ("TP4/forward", "TP8/forward")
         and "dur" in e
     ]
-    # These are historical producer namespaces, not evidence of the TP size.
-    prefixes = {e["name"].split("/", 1)[0] for e in tags}
-    assert len(prefixes) == 1, (path, "Missing or mixed TP annotations", prefixes)
-    prefix = prefixes.pop() + "/"
+    assert scopes, (path, "Missing Forward scope")
     launches = {
-        e["args"]["correlation"]: e
+        e["args"]["correlation"]
         for e in events
         if e.get("cat") in ("cuda_runtime", "cuda_driver")
         and "correlation" in e.get("args", {})
+        and any(
+            t["pid"] == e["pid"]
+            and t["tid"] == e["tid"]
+            and t["ts"] <= e["ts"] < t["ts"] + t["dur"]
+            for t in scopes
+        )
     }
-    rows = []
-    for e in events:
-        if e.get("cat") not in ("kernel", "gpu_memcpy", "gpu_memset"):
-            continue
-        launch = launches.get(e.get("args", {}).get("correlation"))
-        parents = (
-            []
-            if launch is None
-            else sorted(
-                [
-                    t
-                    for t in tags
-                    if t["pid"] == launch["pid"]
-                    and t["tid"] == launch["tid"]
-                    and t["ts"] <= launch["ts"] < t["ts"] + t["dur"]
-                ],
-                key=lambda t: t["dur"],
-            )
-        )
-        inside = any(t["name"] == prefix + "forward" for t in parents)
-        module = parents[0]["name"].removeprefix(prefix) if parents else "outside"
-        layer = next(
-            (
-                t["name"].rsplit("/", 1)[1]
-                for t in parents
-                if t["name"].startswith(prefix + "layer/")
-            ),
-            "",
-        )
-        name = e["name"]
-        category = "other"
-        if name == "_fused_post_pre":
-            category = "fused"
-        elif name in ("_ihc_pre_stage1", "_ihc_pre_stage2"):
-            category = "ihc_pre"
-        elif name == "_ihc_post_kernel":
-            category = "ihc_post"
-        elif any(
-            x in name.lower()
-            for x in ("nccl", "allreduce", "all_reduce", "allgather", "reduce_scatter")
-        ):
-            category = "communication"
-        elif module.startswith("attention/"):
-            category = "attention"
-        elif module.startswith("dense/"):
-            category = "dense_mlp"
-        elif module.startswith("shared_moe/"):
-            category = "shared_moe"
-        elif module.startswith("routed_moe/"):
-            category = "routed_moe"
-        elif module.startswith("moe/"):
-            category = "moe_other"
-        elif module == "head":
-            category = "hc_head"
-        target = (
-            category == "fused"
-            or (
-                category == "ihc_pre"
-                and (
-                    module.startswith("pre/mlp/")
-                    or (
-                        module.startswith("pre/attention/")
-                        and module != f"pre/attention/{layers[0]}"
-                    )
-                )
-            )
-            or (
-                category == "ihc_post"
-                and (
-                    module.startswith("post/attention/")
-                    or (
-                        module.startswith("post/mlp/")
-                        and module != f"post/mlp/{layers[-1]}"
-                    )
-                )
-            )
-        )
-        rows.append(
-            dict(
-                name=name,
-                category=category,
-                module=module,
-                layer=layer,
-                inside_forward=inside,
-                target_boundary=target,
-                start_us=e["ts"],
-                duration_us=e["dur"],
-                stream=e.get("args", {}).get("stream"),
-                grid=e.get("args", {}).get("grid"),
-                block=e.get("args", {}).get("block"),
-            )
-        )
-    active = [g for g in rows if g["inside_forward"]]
-    assert active, (path, "No GPU activity correlated to an annotated forward")
-    csvwrite(output, path.stem.replace(".trace", "") + "_activity.csv", rows)
-    categories = defaultdict(lambda: {"count": 0, "sum_us": 0})
-    for g in active:
-        categories[g["category"]]["count"] += 1
-        categories[g["category"]]["sum_us"] += g["duration_us"]
-    total = sum(g["duration_us"] for g in active)
-    span = max(g["start_us"] + g["duration_us"] for g in active) - min(
-        g["start_us"] for g in active
-    )
-    ihc = sum(
-        g["duration_us"]
-        for g in active
-        if g["category"] in ("ihc_pre", "ihc_post", "fused")
-    )
-    target = sum(g["duration_us"] for g in active if g["target_boundary"])
-    return dict(
-        categories=dict(categories),
-        activity_sum_us=total,
-        union_us=union(active),
-        span_us=span,
-        overlap_us=total - union(active),
-        gaps_us=span - union(active),
-        ihc_us=ihc,
-        ihc_activity_pct=100 * ihc / total,
-        target_us=target,
-        target_activity_pct=100 * target / total,
-        counts=dict(
-            Counter(
-                g["name"]
-                for g in active
-                if g["category"] in ("ihc_pre", "ihc_post", "fused")
-            )
-        ),
-        fused=[g for g in active if g["category"] == "fused"],
-        communication_names=sorted(
-            {g["name"] for g in active if g["category"] == "communication"}
-        ),
-        outside_gpu_count=sum(not g["inside_forward"] for g in rows),
-    )
+    kernels = [
+        e
+        for e in events
+        if e.get("cat") == "kernel" and e.get("args", {}).get("correlation") in launches
+    ]
+    assert kernels, (path, "No GPU kernels correlated to Forward")
+    return dict(counts=dict(Counter(e["name"] for e in kernels)))
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("run", type=Path, help="Saved run directory containing raw/")
-    parser.add_argument(
-        "--output-dir", type=Path, help="Fresh analysis output directory"
-    )
-    args = parser.parse_args(argv)
-    raw = args.run / "raw"
-    output = args.output_dir or raw
-    if args.output_dir:
-        output.mkdir(parents=True)
+def analyze(run, output_dir=None):
+    raw = Path(run) / "raw"
+    output = Path(output_dir) if output_dir else raw
+    output.mkdir(parents=True, exist_ok=True)
     workers = json.loads((raw / "initial_workers.json").read_text())
     tp = workers[0]["world_size"]
     ranks = list(range(tp))
@@ -271,16 +135,41 @@ def main(argv=None):
             vals.append(values[a] / values[b])
             deltas.append(values[a] - values[b])
         paired[a + "/" + b] = {"speedup": stats(vals), "saved_ms": stats(deltas)}
+    write(output, "timing_summary.json", {"forward": timing, "paired": paired})
+    print("Mode       median ms     P10 ms     P90 ms", flush=True)
+    for mode, values in timing.items():
+        print(
+            f"{mode:10s} {values['median']:9.3f} "
+            f"{values['p10']:10.3f} {values['p90']:10.3f}",
+            flush=True,
+        )
+    for pair, values in paired.items():
+        print(
+            f"{pair}: paired median {values['speedup']['median']:.4f}x, "
+            f"saved {values['saved_ms']['median']:.3f} ms",
+            flush=True,
+        )
     paths = sorted(raw.glob("*.trace.json"))
-    assert {p.name for p in paths} == {
-        f"{mode}_rank{rank}.trace.json" for mode in modes for rank in ranks
-    }, "Missing or unexpected rank/mode traces"
-    profiles = {p.stem.replace(".trace", ""): trace(p, output, layers) for p in paths}
-    for mode in modes:
+    if paths:
+        assert {p.name for p in paths} == {
+            f"{mode}_rank{rank}.trace.json" for mode in modes for rank in ranks
+        }, "Missing or unexpected rank/mode traces"
+    profiles = {p.stem.replace(".trace", ""): trace(p) for p in paths}
+    for mode in modes if profiles else []:
         fused = {"original": 0, "intra": len(layers), "cross": 2 * len(layers) - 1}[
             mode
         ]
-        if not 512 <= n <= 8192:
+        if (
+            not 512 <= n <= 8192
+            or not all(f["intra"] for f in workers[0]["flags"])
+            or (
+                config
+                and (
+                    not config["llm"]["enforce_eager"]
+                    or config["llm"].get("dtype", "bfloat16") != "bfloat16"
+                )
+            )
+        ):
             fused = 0
         for rank in ranks:
             counts = profiles[f"{mode}_rank{rank}"]["counts"]
@@ -291,8 +180,8 @@ def main(argv=None):
                     rank,
                     counts,
                 )
-    write(output, "timing_summary.json", {"forward": timing, "paired": paired})
-    write(output, "activity_summary.json", profiles)
+    if profiles:
+        write(output, "activity_summary.json", profiles)
     metadata = dict(
         world_size=tp,
         layers=layers,
@@ -301,22 +190,26 @@ def main(argv=None):
         modes=modes,
         run_config=config,
     )
+    metadata["kernel_hit_verified"] = bool(profiles)
     write(output, "analysis_metadata.json", metadata)
-    print(json.dumps(dict(metadata=metadata, forward=timing, paired=paired), indent=2))
-    for k, v in profiles.items():
+    for name, profile in profiles.items():
         print(
-            k,
+            name,
             {
-                s: v[s]
-                for s in (
-                    "activity_sum_us",
-                    "span_us",
-                    "ihc_activity_pct",
-                    "target_activity_pct",
-                    "counts",
-                )
+                k: v
+                for k, v in profile["counts"].items()
+                if "ihc" in k or "fused_post_pre" in k
             },
         )
+    return dict(metadata=metadata, forward=timing, paired=paired)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("run", type=Path, help="Saved run directory containing raw/")
+    parser.add_argument("--output-dir", type=Path, help="Directory for derived results")
+    args = parser.parse_args(argv)
+    analyze(args.run, args.output_dir)
 
 
 if __name__ == "__main__":

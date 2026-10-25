@@ -1,88 +1,126 @@
-# HY4 iHC Fused PostPre Lab
+# HY4 iHC：Numerical / Runtime / Performance
 
-独立算子实验，不接入 vLLM Runtime。入口为
-`kernels/fused_post_pre.py::fused_post_pre`，返回
-`(next_x, next_residual, next_post_gates)`。
+默认验证只覆盖生产 BF16 / D6144 / C4。独立 PyTorch Golden、固定官方
+Post + Pre1 + Pre2 Baseline、数值阈值和 Kernel 均保持原样。生产 Runtime 测试
+不依赖 Lab；Lab 复用生产测试中原有的数据生成和数值验收 helper，避免维护两份规则。
 
-- 上一子块提供 `x[N,D]`、`residual[N,C,D]`、`previous_post[N,C]`。
-- 下一子块提供 FP32 `weight[2C,C*D]`、`scale[2]`、`base[2C]`、
-  `magnitude`、`hc_eps`、`norm_eps`。权重前 C 行为 Pre，后 C 行为 Post。
-- 激活支持 BF16/FP16；FP32 是 Lab 对官方底层函数的直接调用扩展。
-  所有输入要求同一 CUDA device、contiguous；支持非零 storage offset。
-- 输出激活和 Residual 与输入 dtype 一致，Post gates 为 FP32。
-  空 Token 输入不启动 kernel。可用 `out=(...)` 传入三个独立预分配输出。
-  输出缓冲不得与输入或彼此重叠；本实验均使用独立缓冲。
-- 非空输入只启动一个 Triton kernel。保留上一 Post 的低精度舍入；
-  所有投影、归一化、门控和输出累加使用 FP32，禁用 FP fusion。
-- C=4 使用固定 1024 lane 投影，先跨 chunk 累加再树形归约。
-  该树与官方不同，数值误差按冻结规则验证；不保证输出逐位一致。
-  Residual 在所有测试中逐位一致。
-- 为控制寄存器，C=4 在最终输出阶段从原始输入重算舍入后的 Post，
-  不回读已写出的新 Residual；必需的 Residual 输出仅写一次。
-  C≠4 保留通用单 kernel 实现，未测其性能。
-- H100 粗调后 C=4、N≤128 默认 16 warps，其余 4 warps。
-  `num_warps=` 可显式覆盖。此阈值不代表所有形状的最优配置。
+## 本地算子与 Runtime
 
-完整结果、误差、退化分析和阶段验收见 [results/REPORT.md](results/REPORT.md)。
-小 Token Decode 仍有明显性能退化；本实验不构成 Runtime 集成建议。
-
-## 环境与复现
-
-从仓库根目录运行。所有输出、环境和缓存均放在白名单内：
+从仓库根目录运行，选择空闲 GPU 和新的输出目录：
 
 ```bash
-export IHC_LAB="$PWD/lab/ihc_fusion"
-export UV_CACHE_DIR="$IHC_LAB/results/.cache/uv"
-export UV_PYTHON_INSTALL_DIR="$IHC_LAB/results/.cache/python"
-export UV_COMPILE_BYTECODE=0
-export PYTHONDONTWRITEBYTECODE=1
-export CUDA_VISIBLE_DEVICES=3
-export TRITON_CACHE_DIR="$IHC_LAB/results/.cache/triton"
-export CUDA_CACHE_PATH="$IHC_LAB/results/.cache/cuda"
-export XDG_CACHE_HOME="$IHC_LAB/results/.cache"
-export FLASHINFER_WORKSPACE_BASE="$IHC_LAB/results"
-
-# 本机复用已安装的 torch 2.13.0+cu129、triton 3.7.1、FlashInfer，保持只读。
-# --python 选择解释器；所有实际 Python 命令均经过 uv 创建的 .venv。
-uv venv "$IHC_LAB/results/.venv" --python /usr/bin/python3.12 --system-site-packages
-uv pip install --python "$IHC_LAB/results/.venv/bin/python" \
-  -r requirements/lint.txt pytest==9.1.1 ruff==0.14.0
-
-IHC_CORRECTNESS_JSON="$IHC_LAB/results/reproduced_correctness.json" \
-IHC_LAUNCH_JSON="$IHC_LAB/results/reproduced_launches.json" \
-  "$IHC_LAB/results/.venv/bin/python" -m pytest -c /dev/null \
-  --confcutdir=lab/ihc_fusion lab/ihc_fusion/tests/test_post_pre.py \
-  -q -p no:cacheprovider
-
-"$IHC_LAB/results/.venv/bin/python" -m lab.ihc_fusion.benchmarks.bench_post_pre \
-  --rounds 3 --repeat-ms 100 \
-  --output "$IHC_LAB/results/reproduced_benchmark.json"
-
-"$IHC_LAB/results/.venv/bin/python" -m ruff check lab/ihc_fusion
-"$IHC_LAB/results/.venv/bin/python" -m ruff format --check lab/ihc_fusion
+export HY4_TP8_GPUS=1
+export HY4_TP8_RUN=/tmp/hy4-local
+bash lab/ihc_fusion/benchmarks/tp8_validation/run.sh validate.py --suite local
 ```
 
-Golden/Baseline 单独复现时，为 pytest 设置 `IHC_TEST_BASELINE_ONLY=1` 并选
-`-k 'shapes or numerical_boundaries or preallocated_baseline'`，对应最初 43 项。
-`-c /dev/null` 和 `--confcutdir` 避免加载 vLLM Runtime 的顶层测试配置。
-未安装 git hooks 或 editable vLLM，因为会写出白名单。
+此入口按文件隔离执行现有 pytest，输出日志、JUnit、数值和实际 GPU launch 记录：
 
-在其他环境需自行在该 Lab 虚拟环境内准备上述 PyTorch/Triton/FlashInfer
-版本与兼容 CUDA driver；不需要编译或安装本源码树中的 vLLM。
+- Numerical：N128/513/8192；zero/tiny/large/cancel/saturated；Golden 与官方对照；
+  预分配 Baseline 等价性；生产单 Kernel 与官方三 Kernel 的真实 launch。
+- Runtime：路由上下界、dtype/layout/metadata 回退、实际 Dispatch、Pending 消费、
+  首末层；N128/512/8192 三层 Original/Intra/Cross。Intra/Cross 独立验收。
+- Graph：FULL N512、breakable N1024，分别有/无捕获 metadata；同图更新输入，
+  回放 Prefill/Mixed/Padding/Decode，要求 ON/OFF 逐位一致且 GPU trace 无融合调用。
+- CPU：快照有效性、严格失败保留、配置与配对 Rank-MAX 统计。
 
-## 固定参考与官方来源
+可直接使用 pytest 文件路径和 `-k` 选择子集，无新增配置框架。生产文件为
+`tests/models/test_hyv4_ihc_fusion.py`，Golden 数值文件为
+`lab/ihc_fusion/tests/test_post_pre.py`，CPU 检查为 `test_prefill_workload.py`。
+实验性 Two-Stage 不进入默认集合；需要时显式运行
+`pytest lab/ihc_fusion/tests/check_decode_two_stage.py`。通用 Shape/dtype 扩展矩阵
+已移出日常验证；这不意味着所有 Lab 扩展均已验证。
 
-`reference/torch_post_pre.py` 是独立 PyTorch Golden，完全不调用 Triton。
-`baselines/official.py` 的官方文件 SHA256 与 commit 通过双重校验：
-`5df63a7203cdb9328d824a27b682e77c7b9928be`，
-`vllm/models/hy_v4/nvidia/triton_ihc.py`。
+## H200 完整权重 TP8
 
-此 checkout 缺少已编译 vLLM 扩展，直接 import 会失败。Baseline 从原始 AST
-加载未改写的 kernel、函数和常量，省略 runtime 导入与支持判断，不走模型分发，
-不替换官方计算实现。实际源文件与 callable code 路径在结果 JSON 中记录。
-正式计时使用三个原始官方 kernel、原始 launch 配置与预分配缓冲；此路径已验证
-与官方 Post→Pre 包装逐位一致。计时不包含分配、编译、输入生成或主机拷贝。
+以下命令直接使用同一 Harness，不固定设备型号、checkpoint 或层数。
+`run.sh` 检查选中 GPU 空闲，不清理其他进程。部署环境需安装匹配的 vLLM/CUDA
+依赖；当前 checkout 的 `bootstrap/sitecustomize.py` 复用已安装 wheel 的扩展。
 
-Golden、Baseline、误差规则在 Phase 2 后冻结，哈希见
-`results/frozen_sha256.json`。保留了首次 Baseline/Golden 验证时发现并修正
-固定绝对阈值问题的日志；后续所有 fused 版本均未修改接受规则。
+```bash
+export HY4_TP8_GPUS=0,1,2,3,4,5,6,7  # 改成实际分配且空闲的 GPU
+export HY4_TP8_CHECKPOINT=/path/to/full-HY4-checkpoint
+export HY4_TP8_RUN=/path/to/results/hy4-tp8
+H=lab/ihc_fusion/benchmarks/tp8_validation/run.sh
+
+# Numerical：同实例 Original A/A + Original/Intra/Cross Hidden State A/B。
+bash "$H" validate.py --tp-size 8 --shapes 128 512 8192 --aa-repeats 2 --warmup 2
+
+# Runtime + E2E：每 rank 实际 Kernel trace 在计时结束后采集；无正确性 Gate。
+bash "$H" benchmark.py --tp-size 8 --tokens 8192 --warmup 6 --rounds 9 --profile
+
+# Serving Eager：原生 vllm bench serve 请求、流式指标和详细 JSON。
+bash "$H" serving.py --tp-size 8 --host 127.0.0.1 --port 18080 \
+  --execution eager --input-len 8192 --output-len 128 --concurrency 1 4 \
+  --request-count 16 --request-rate inf --warmup 2 --rounds 3
+
+# 完整模型 Graph 启动/捕获/请求 smoke；当前 Runtime 全部回退 Original。
+bash "$H" serving.py --tp-size 8 --host 127.0.0.1 --port 18080 \
+  --execution graph --input-len 512 --output-len 8 --concurrency 1 \
+  --request-count 2 --warmup 1 --rounds 1
+```
+
+不同阶段写入 `validation/`、`performance/`、`serving/{eager,graph}/`。
+同阶段再次运行需新的 `HY4_TP8_RUN`。TP 默认取 GPU 数；`--modes original intra cross`
+可选择以 Original 为基准的子集。模型设置只通过 `--llm-overrides JSON` 覆盖，
+例如 `'{"gpu_memory_utilization":0.85,"max_num_seqs":8}'`，TP/checkpoint 使用专用参数。
+H200 全模型必须根据实际权重占用设置内存比例，以上命令不代表已完成 H200 验收。
+
+模型数值采样限定 Eager/PP1，一次新鲜、完整、无 Padding 的 Forward。
+快照编号、有效输入/Positions/Query 区间和参考生命周期必须匹配；陈旧、分块、
+多次 Forward 或 Graph hook 结果记为 INVALID。物理 KV 地址不同不等于逻辑输入不同。
+JSON 保留 PASS/FAIL/INVALID、逐位一致性、Max Abs、Relative L2、Cosine 和 ULP。
+`--aa-repeats 6 --modes original` 可按需复现 A/A；不默认扩展逐层诊断。
+
+Forward 计时仍为各 rank 的 CUDA event 时间逐轮取 MAX，再统计配对收益。
+Barrier、模型初始化、生成输入和 profile 不计入该区间；另外保存 generate wall time。
+这与 `vllm bench latency/throughput` 的指标不同，不互相替代。
+`--profile` 只保留 Forward 范围和实际 Kernel 计数，删除模块分解/重叠统计。
+未开启时明确 `kernel_hit_verified=false`。结果自动打印并保存原始 `timing.csv`、
+配置和 `timing_summary.json`。历史 TP4/TP8 原始计时及 trace 仍可离线解析：
+
+```bash
+.venv/bin/python -S lab/ihc_fusion/benchmarks/tp8_validation/analyze_perf.py \
+  /path/to/saved/performance --output-dir /tmp/hy4-analysis
+```
+
+Serving 复用 `RemoteOpenAIServer` 的启动等待和自有进程清理，只覆盖解释器启动方式。
+请求与指标完全交给 `vllm bench serve`：TTFT/TPOT P50/P90、请求吞吐、Output tokens/s、
+成功率、各轮相对加速比。每模式使用固定 seed、等长随机请求、greedy、ignore_eos，
+保存实际启动参数、原始详细 JSON、`summary.json/csv`。失败、长度不足、模式缺失等
+不产生正常性能结论。TPOT 为 `(latency - ttft)/(output_tokens - 1)`，ITL 是流式事件
+间隔；不保证一个事件只有一个 Token。Graph 只报告 Original，不计算融合加速比。
+启动开关不等于 Serving 实际 Kernel 命中，Mixed/小 N 仍可能回退。
+
+## 一个 Kernel 微基准
+
+旧 `bench_decode_two_stage.py`、`bench_prefill_selection.py` 合并到以下入口；
+删除 `audit_baseline_scope.py`、`audit_postpre_timing.py`，保留其全部历史结果。
+预分配、官方三次 launch、25ms Graph 预热和 FlashInfer 冷 L2 轮转口径保持不变。
+CUPTI 不可用时采用完整轮转周期的 Graph/Event fallback。hot 单独使用 32 次 Graph
+调用，与 cold 分开记录；不会混合比较。Cross 只在 Runtime/模型级测量。
+
+```bash
+export CUDA_VISIBLE_DEVICES=1
+export PYTHONPATH="$PWD/lab/ihc_fusion/benchmarks/tp8_validation/bootstrap:$PWD"
+.venv/bin/python -m lab.ihc_fusion.benchmarks.bench_post_pre \
+  --tokens 128,513,8192 --hidden 6144 --dtypes bfloat16 \
+  --magnitude 2 --hc-eps 1e-6 --warmup 30 --rounds 3 --repeat-ms 100 \
+  --output /tmp/hy4-kernel.json
+```
+
+`--two-stage --two-warps 8 --cache both` 对应原三臂 Prefill 实验；
+`--hidden 4096,7168 --tokens 1,8,32,128 --two-stage` 对应原 Decode 实验。
+保留 `--warps`、dtype/shape、warmup/rounds/repeat-ms 配置，不默认进行参数搜索。
+默认 magnitude=1.7、hc_eps=2e-6 沿用原主微基准；上述生产参数显式覆盖，JSON 保存配置。
+每个计时臂必须先通过冻结 Golden/Official 比较；保存 FlashInfer 原始 samples 和汇总。
+没有删改 `kernels/`、`reference/`、`baselines/` 中的实现。
+
+## 尚未闭环的数值验收
+
+Humming MXFP8 Stream-K 的模型级 Original A/A 差异仍未解决；固定输入重放中关闭
+Stream-K 曾恢复逐位一致，但本 Harness 不强制更改模型计算。不能将所有 A/B 差异
+归因于融合。N8192 三层链的严格数值失败继续返回 FAIL；没有 skip/xfail 或放宽阈值。
+算子 Golden 通过、Runtime 正常或性能正收益都不等于全模型严格数值通过。
+历史证据位于 `results/`；已有 `decode_profile.py` 保留为按需工具，非默认流程。
+`H200_TP8_MANUAL_TEST.md`、`RUNTIME_GRAPH_VALIDATION.md` 为历史记录，当前命令以本页为准。

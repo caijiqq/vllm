@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+
 """Instance-local timing and profiling for the isolated TP8 experiment."""
 
 import os
@@ -31,26 +34,7 @@ def install(model):
         model.register_forward_pre_hook(before, with_kwargs=True),
         model.register_forward_hook(after, with_kwargs=True),
     ]
-    parallel = []
-    for i, layer in enumerate(model.model.layers):
-        for name, module in layer.mlp.named_modules():
-            cfg = getattr(module, "moe_config", None)
-            pcfg = getattr(cfg, "moe_parallel_config", None)
-            if pcfg is not None:
-                parallel.append(
-                    {
-                        "layer": i,
-                        "module": name,
-                        "parallel": repr(pcfg),
-                        "config": repr(cfg),
-                    }
-                )
-    return {
-        "rank": get_tp_group().rank_in_group,
-        "world_size": get_tp_group().world_size,
-        "worker_module": __file__,
-        "moe": parallel,
-    }
+    return dict(rank=get_tp_group().rank_in_group, world_size=get_tp_group().world_size)
 
 
 def arm(model):
@@ -80,53 +64,19 @@ def read(model, check_finite=False):
 def start_profile(model, mode):
     state = model._tp8_perf
     state["phase"] = "profile"
-    state["observations"] = []
     state["mode"] = mode
 
-    def attach(module, tag):
-        stack = []
+    def before(module, args):
+        state["scope"] = torch.profiler.record_function("TP8/forward")
+        state["scope"].__enter__()
 
-        def before(mod, args, kwargs):
-            scope = torch.profiler.record_function("TP8/" + tag)
-            scope.__enter__()
-            stack.append(scope)
-            if tag.startswith("pre/") and args:
-                state["observations"].append({"tag": tag, "shape": list(args[0].shape)})
+    def after(module, args, result):
+        state["scope"].__exit__(None, None, None)
 
-        def after(mod, args, kwargs, output):
-            if tag.startswith("layer/") and isinstance(output, tuple):
-                pending = output[1]
-                if isinstance(pending, tuple):
-                    state["observations"].append(
-                        {"tag": tag + "/pending", "shape": list(pending[0].shape)}
-                    )
-            stack.pop().__exit__(None, None, None)
-
-        state["profile_handles"].extend(
-            [
-                module.register_forward_pre_hook(before, with_kwargs=True),
-                module.register_forward_hook(after, with_kwargs=True),
-            ]
-        )
-
-    attach(model, "forward")
-    for i, layer in enumerate(model.model.layers):
-        attach(layer, f"layer/{i}")
-        attach(layer.self_attn, f"attention/{i}")
-        mlp_type = model.model.config.mlp_layer_types[i]
-        attach(layer.mlp, f"{'dense' if mlp_type == 'dense' else 'moe'}/{i}")
-        for name, module in layer.mlp.named_modules():
-            if name == "shared_experts":
-                attach(module, f"shared_moe/{i}")
-            elif name == "experts.routed_experts":
-                attach(module, f"routed_moe/{i}")
-        for kind, hc in [
-            ("attention", layer.hc_attn_layer),
-            ("mlp", layer.hc_mlp_layer),
-        ]:
-            attach(hc.hc_pre, f"pre/{kind}/{i}")
-            attach(hc.hc_post, f"post/{kind}/{i}")
-    attach(model.model.hc_head, "head")
+    state["profile_handles"] = [
+        model.register_forward_pre_hook(before),
+        model.register_forward_hook(after),
+    ]
     torch.cuda.synchronize()
     state["profiler"] = torch.profiler.profile(
         activities=[
@@ -158,5 +108,4 @@ def stop_profile(model):
         "rank": rank,
         "world_size": get_tp_group().world_size,
         "trace": path.name,
-        "observations": state["observations"],
     }

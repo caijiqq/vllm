@@ -1,4 +1,7 @@
-"""Fail before CUDA initialization unless the selected H100/H200 GPUs are idle."""
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+
+"""Fail before CUDA initialization unless the selected GPUs are idle."""
 
 import csv
 import datetime
@@ -10,10 +13,8 @@ from pathlib import Path
 
 
 def check(selected, gpus, processes):
-    if len(selected) not in (4, 8) or len(set(selected)) != len(selected):
-        raise ValueError(
-            "HY4_TP8_GPUS must contain four or eight different physical indices"
-        )
+    if not selected or len(set(selected)) != len(selected):
+        raise ValueError("HY4_TP8_GPUS must contain distinct physical indices")
     by_index = {g["index"]: g for g in gpus}
     errors = []
     for index in selected:
@@ -22,8 +23,6 @@ def check(selected, gpus, processes):
             continue
         gpu = by_index[index]
         active = [p for p in processes if p["gpu_uuid"] == gpu["uuid"]]
-        if not any(name in gpu["name"] for name in ("H100", "H200")):
-            errors.append(f"GPU {index}: expected H100/H200, got {gpu['name']}")
         if active or int(gpu["memory.used"]) > 512 or int(gpu["utilization.gpu"]) > 0:
             errors.append(
                 f"GPU {index}: busy, memory={gpu['memory.used']} MiB, "
