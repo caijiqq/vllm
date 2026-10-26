@@ -152,8 +152,11 @@ def context(n, kind="prefill"):
     "n,kind,dtype,enabled,expected",
     [
         (511, "prefill", torch.bfloat16, True, False),
+        (511, "mixed", torch.bfloat16, True, False),
         (512, "prefill", torch.bfloat16, True, True),
         (512, "attn", torch.bfloat16, True, True),
+        (4100, "mixed", torch.bfloat16, True, True),
+        (8192, "mixed", torch.bfloat16, True, True),
         (512, "graph", torch.bfloat16, True, False),
         (512, "graph_ubatch", torch.bfloat16, True, False),
         (512, "compiled_graph", torch.bfloat16, True, False),
@@ -165,7 +168,6 @@ def context(n, kind="prefill"):
         *[
             (512, kind, torch.bfloat16, True, False)
             for kind in (
-                "mixed",
                 "decode",
                 "unknown",
                 "none",
@@ -318,7 +320,7 @@ def test_cross_layer_pending_chain(dist_init, monkeypatch, n, candidate, pp_boun
     )
 
 
-@pytest.mark.parametrize("kind", ["disabled", "mixed", "padding"])
+@pytest.mark.parametrize("kind", ["disabled", "padding"])
 def test_pending_post_falls_back_at_consumer(dist_init, kind):
     """A pending Post must be materialized even if the next layer cannot fuse."""
     args = make_case(512, 6144, torch.bfloat16)

@@ -240,12 +240,10 @@ class HYV4DecoderLayer(nn.Module):
                 if isinstance(metadata, dict)
                 else None
             )
-            # Reject mixed/unknown batches and padding; only CPU metadata is read.
+            # Reject unknown batches and padding; only CPU metadata is read.
             if (
                 isinstance(attn, MLACommonMetadata)
                 and attn.num_prefills > 0
-                and attn.num_decodes == 0
-                and attn.num_decode_tokens == 0
                 and attn.num_actual_tokens == x.shape[0]
             ):
                 return True
