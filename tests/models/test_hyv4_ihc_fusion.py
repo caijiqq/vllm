@@ -4,6 +4,7 @@
 import json
 import os
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 import torch
@@ -172,6 +173,8 @@ def test_fused_model_hidden_metrics(dist_init):
 
 
 class HY4HiddenProbe:
+    model_runner: Any  # Provided by the vLLM worker extension host.
+
     def _layers(self):
         return sorted(
             (
@@ -183,7 +186,7 @@ class HY4HiddenProbe:
         )
 
     def capture_hidden(self):
-        self.hidden = {}
+        self.hidden: dict[int, torch.Tensor] = {}
 
         def capture(layer, args, kwargs, output):
             hidden, pending = output
@@ -195,7 +198,7 @@ class HY4HiddenProbe:
             layer.register_forward_hook(capture, with_kwargs=True)
 
     def get_hidden(self):
-        return self.hidden
+        return {layer: hidden.tolist() for layer, hidden in self.hidden.items()}
 
 
 def _full_hy4_hidden(vllm_runner, checkpoint, fused, tp, tokens):
@@ -204,11 +207,15 @@ def _full_hy4_hidden(vllm_runner, checkpoint, fused, tp, tokens):
     with vllm_runner(
         checkpoint,
         tensor_parallel_size=tp,
-        hf_overrides={"enable_ihc_post_pre_fusion": fused},
+        block_size=None,
+        hf_overrides={
+            "enable_ihc_post_pre_fusion": fused,
+            "enable_ihc_cross_layer_fusion": fused,
+        },
         worker_extension_cls=f"{__name__}.HY4HiddenProbe",
         enforce_eager=True,
         max_model_len=tokens + 1,
-        max_num_batched_tokens=tokens,
+        max_num_batched_tokens=tokens + 1,
         max_num_seqs=1,
         enable_prefix_caching=False,
     ) as runner:
@@ -217,7 +224,8 @@ def _full_hy4_hidden(vllm_runner, checkpoint, fused, tp, tokens):
             [TokensPrompt(prompt_token_ids=list(range(1, tokens + 1)))],
             SamplingParams(temperature=0.0, max_tokens=1),
         )
-        return runner.llm.collective_rpc("get_hidden")[0]
+        hidden = runner.llm.collective_rpc("get_hidden")[0]
+        return {layer: torch.tensor(values) for layer, values in hidden.items()}
 
 
 @pytest.mark.skipif(

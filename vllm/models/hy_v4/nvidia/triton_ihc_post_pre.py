@@ -10,12 +10,13 @@ _IHC_AUTOTUNE_CONFIGS = [
     triton.Config({}, num_warps=4, num_stages=1),
     triton.Config({}, num_warps=4, num_stages=2),
     triton.Config({}, num_warps=4, num_stages=3),
+    triton.Config({}, num_warps=8, num_stages=1),
 ]
 
 
 @triton.autotune(
     configs=_IHC_AUTOTUNE_CONFIGS,
-    key=["N", "D"],
+    key=["D", "BLOCK_K"],
     cache_results=True,
 )
 @triton.jit
@@ -30,8 +31,8 @@ def _fused_post_pre(
     updated_ptr,
     next_post_ptr,
     rms_weight_ptr,
-    N: tl.constexpr,
     D: tl.constexpr,
+    BLOCK_K: tl.constexpr,
     BLOCK_D: tl.constexpr,
     MAGNITUDE: tl.constexpr,
     HC_EPS: tl.constexpr,
@@ -39,12 +40,12 @@ def _fused_post_pre(
     RMS_EPS: tl.constexpr,
 ):
     token = tl.program_id(0).to(tl.int64)
-    lanes = tl.arange(0, 1024)
+    lanes = tl.arange(0, BLOCK_K)
     rows = tl.arange(0, 8)
-    mix_lanes = tl.full((8, 1024), 0, tl.float32)
-    square_lanes = tl.full((1024,), 0, tl.float32)
-    for split in range(tl.cdiv(4 * D, 1024)):
-        k = split * 1024 + lanes
+    mix_lanes = tl.full((8, BLOCK_K), 0, tl.float32)
+    square_lanes = tl.full((BLOCK_K,), 0, tl.float32)
+    for split in range(tl.cdiv(4 * D, BLOCK_K)):
+        k = split * BLOCK_K + lanes
         valid = k < 4 * D
         x = tl.load(x_ptr + token * D + k % D, mask=valid, other=0).to(tl.float32)
         previous = tl.load(previous_ptr + token * 4 + k // D, mask=valid, other=0)
@@ -120,13 +121,13 @@ def triton_ihc_post_pre(
         updated,
         post,
         rms_weight,
-        N=x.shape[0],
         D=x.shape[1],
+        BLOCK_K=2048 if x.shape[0] <= 128 else 1024,
         BLOCK_D=triton.next_power_of_2(x.shape[1]),
         MAGNITUDE=magnitude,
         HC_EPS=hc_eps,
         NORM_EPS=norm_eps,
         RMS_EPS=rms_eps,
-        enable_fp_fusion=False,
+        enable_fp_fusion=True,
     )
     return output, updated, post
