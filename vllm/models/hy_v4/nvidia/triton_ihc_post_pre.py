@@ -1,12 +1,23 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
-"""HY4 C=4 Post + next Pre, promoted from the frozen Lab implementation."""
+"""HY4 C=4 Post + next Pre + RMSNorm fusion."""
 
 import torch
 
 from vllm.triton_utils import tl, triton
 
+_IHC_AUTOTUNE_CONFIGS = [
+    triton.Config({}, num_warps=4, num_stages=1),
+    triton.Config({}, num_warps=4, num_stages=2),
+    triton.Config({}, num_warps=4, num_stages=3),
+]
 
+
+@triton.autotune(
+    configs=_IHC_AUTOTUNE_CONFIGS,
+    key=["N", "D"],
+    cache_results=True,
+)
 @triton.jit
 def _fused_post_pre(
     x_ptr,
@@ -18,11 +29,14 @@ def _fused_post_pre(
     output_ptr,
     updated_ptr,
     next_post_ptr,
+    rms_weight_ptr,
+    N: tl.constexpr,
     D: tl.constexpr,
     BLOCK_D: tl.constexpr,
     MAGNITUDE: tl.constexpr,
     HC_EPS: tl.constexpr,
     NORM_EPS: tl.constexpr,
+    RMS_EPS: tl.constexpr,
 ):
     token = tl.program_id(0).to(tl.int64)
     lanes = tl.arange(0, 1024)
@@ -68,6 +82,9 @@ def _fused_post_pre(
         rounded = (previous * x_out + residual).to(updated_ptr.dtype.element_ty)
         gate = tl.sum(tl.where(channels == row, pre, 0.0), 0)
         output += gate * rounded.to(tl.float32)
+    output_rms = tl.rsqrt(tl.sum(output * output, 0) / D + RMS_EPS)
+    rms_weight = tl.load(rms_weight_ptr + d, mask=d < D, other=0).to(tl.float32)
+    output = output * output_rms * rms_weight
     tl.store(output_ptr + token * D + d, output, mask=d < D)
 
 
@@ -81,11 +98,13 @@ def triton_ihc_post_pre(
     magnitude: float,
     hc_eps: float,
     norm_eps: float,
+    rms_weight: torch.Tensor,
+    rms_eps: float,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Return next input, rounded residual and next gates for eligible HY4 inputs.
+    """Return RMS-normalized next input, rounded residual and next gates.
 
     Previous gates belong to Attention; projection parameters belong to MLP.
-    The caller checks contiguous BF16 [N,6144]/[N,4,6144] and FP32 parameters.
+    The caller provides contiguous BF16 activations and FP32 parameters.
     """
     output = torch.empty_like(x)
     updated = torch.empty_like(residual)
@@ -100,12 +119,14 @@ def triton_ihc_post_pre(
         output,
         updated,
         post,
+        rms_weight,
+        N=x.shape[0],
         D=x.shape[1],
         BLOCK_D=triton.next_power_of_2(x.shape[1]),
         MAGNITUDE=magnitude,
         HC_EPS=hc_eps,
         NORM_EPS=norm_eps,
-        num_warps=4,
+        RMS_EPS=rms_eps,
         enable_fp_fusion=False,
     )
     return output, updated, post

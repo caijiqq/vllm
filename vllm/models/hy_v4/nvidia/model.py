@@ -33,15 +33,13 @@ from torch import nn
 from transformers import PreTrainedConfig
 
 from vllm import envs
-from vllm.config import CacheConfig, CUDAGraphMode, VllmConfig
+from vllm.config import CacheConfig, VllmConfig
 from vllm.distributed import (
     get_pp_group,
     get_tensor_model_parallel_rank,
     get_tensor_model_parallel_world_size,
 )
-from vllm.forward_context import get_forward_context, is_forward_context_available
 from vllm.logger import init_logger
-from vllm.model_executor.layers.attention.mla_attention import MLACommonMetadata
 from vllm.model_executor.layers.fused_moe import fused_moe_make_expert_params_mapping
 from vllm.model_executor.layers.layernorm import RMSNorm
 from vllm.model_executor.layers.logits_processor import LogitsProcessor
@@ -202,13 +200,14 @@ class HYV4DecoderLayer(nn.Module):
         return hidden_states, residual
 
     def _can_fuse_ihc(self, x, residual, post_gates, pre):
-        if (
+        return (
             self._ihc_fusion_enabled
-            and not torch.compiler.is_compiling()
-            and 512 <= x.shape[0] <= 8192
-            and x.shape[1:] == (6144,)
-            and residual.shape == (x.shape[0], 4, 6144)
-            and post_gates.shape == (x.shape[0], 4)
+            and x.dim() == 2
+            and residual.dim() == 3
+            and post_gates.dim() == 2
+            and residual.shape[0] == x.shape[0]
+            and residual.shape[1] == post_gates.shape[1] == 4
+            and residual.shape[2] == x.shape[1]
             and x.dtype == residual.dtype == torch.bfloat16
             and all(
                 t.is_cuda and t.device == x.device and t.is_contiguous()
@@ -225,33 +224,14 @@ class HYV4DecoderLayer(nn.Module):
                 t.dtype == torch.float32
                 for t in (post_gates, pre.hc_fn.weight, pre.hc_scale, pre.hc_base)
             )
-            and is_forward_context_available()
-        ):
-            context = get_forward_context()
-            if context.ubatch_slices is not None:
-                return False
-            if context.cudagraph_runtime_mode != CUDAGraphMode.NONE:
-                # Graph keys cannot guarantee unpadded, pure Prefill on replay.
-                # Capture-time metadata must not enable fusion for a shared key.
-                return False
-            metadata = context.attn_metadata
-            attn = (
-                metadata.get(self.self_attn.mla_attn.layer_name)
-                if isinstance(metadata, dict)
-                else None
-            )
-            # Reject unknown batches and padding; only CPU metadata is read.
-            if (
-                isinstance(attn, MLACommonMetadata)
-                and attn.num_prefills > 0
-                and attn.num_actual_tokens == x.shape[0]
-            ):
-                return True
-        return False
+        )
 
     def _ihc_post_pre(self, x, residual, post_gates, *, pre_attention=False):
         pre_layer = self.hc_attn_layer if pre_attention else self.hc_mlp_layer
         pre = pre_layer.hc_pre
+        norm_layer = (
+            self.input_layernorm if pre_attention else self.post_attention_layernorm
+        )
         if self._can_fuse_ihc(x, residual, post_gates, pre):
             output, updated, post = triton_ihc_post_pre(
                 x,
@@ -263,13 +243,16 @@ class HYV4DecoderLayer(nn.Module):
                 pre.magnitude,
                 pre.hc_eps,
                 pre.layernorm_epsilon,
+                norm_layer.weight,
+                norm_layer.variance_epsilon,
             )
             return output, post, updated
         # Post has no layer parameters; pending gates belong to the predecessor.
         post_layer = self.hc_mlp_layer if pre_attention else self.hc_attn_layer
         updated = post_layer.post(x, residual, post_gates)
         updated = pre_layer.prepare_input(updated)
-        return pre_layer.pre(updated)
+        output, post, updated = pre_layer.pre(updated)
+        return norm_layer(output), post, updated
 
     def _forward_ihc(
         self,
@@ -281,11 +264,11 @@ class HYV4DecoderLayer(nn.Module):
         if pending is None:
             hidden_states = self.hc_attn_layer.prepare_input(hidden_states)
             hidden_states, post_gates, residual = self.hc_attn_layer.pre(hidden_states)
+            hidden_states = self.input_layernorm(hidden_states)
         else:
             hidden_states, post_gates, residual = self._ihc_post_pre(
                 hidden_states, *pending, pre_attention=True
             )
-        hidden_states = self.input_layernorm(hidden_states)
         hidden_states = self.self_attn(
             positions=positions,
             hidden_states=hidden_states,
@@ -293,7 +276,6 @@ class HYV4DecoderLayer(nn.Module):
         hidden_states, post_gates, residual = self._ihc_post_pre(
             hidden_states, residual, post_gates
         )
-        hidden_states = self.post_attention_layernorm(hidden_states)
         hidden_states = self.mlp(hidden_states)
         if self._ihc_defer_post and self._can_fuse_ihc(
             hidden_states, residual, post_gates, self.hc_mlp_layer.hc_pre
