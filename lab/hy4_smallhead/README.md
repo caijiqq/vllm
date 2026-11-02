@@ -62,6 +62,12 @@ SM90、BF16 cache/Q、8/16/32 heads、512+64 维、PCP=DCP=1、无 HiSparse、
 同一 stream 顺序执行，直接写入 head-padded 输出的不同切片，无输出拼接。
 没有修改 Scheduler。混合路径并非所有比例都更快，实测见 [RESULTS](RESULTS.md)。
 
+复用 `benchmark_hy4_smallhead_mixed.py` 做三组对照：A 整批原生；B 拆批后两段
+均用原生；C 拆批后 Triton decode + 原生 prefill。GPU7 的 H100 实测九组、
+每组 12 轮：C 均快于 B，但相对 A 有六组加速、三组回退，净延迟变化
+为 -28.08% 至 +3.29%。这说明拆批成本可能抵消 decode 收益；当前保持混合
+实验开关默认关闭。完整数据、正确性范围与复测命令见 [RESULTS](RESULTS.md)。
+
 ## 本地验证
 
 复用 `tests/kernels/attention/test_flashmla_sparse.py` 和现有 FlashMLA 算子；

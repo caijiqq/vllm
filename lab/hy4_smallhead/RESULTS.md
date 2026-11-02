@@ -1,6 +1,66 @@
 # HY4 small-head 验证结果
 
-## 混合 batch：Triton decode + 原生 prefill
+## 混合 batch A/B/C：区分拆批成本与 decode 收益
+
+2026-11-02，在物理 GPU7（H100 80GB，UUID 尾号 `754aa34b024c`）完成。
+生产源码为 `b9efac57c3`，本次只扩展已有 demo，不修改生产分发规则。
+8 heads、TopK=2048、BF16 KV，QK=576、latent V=512。
+
+- A：整个混合 batch 调用一次原生 FlashMLA。
+- B：decode/prefill 分开，两段均用原生 FlashMLA。
+- C：decode/prefill 分开，Triton decode + 原生 FlashMLA prefill。
+
+B 与 C 共用相同索引转换方式及输出切片；两段在同一 stream 顺序执行。
+B−A 衡量拆批的整体影响，包含额外调用、sink 准备和原生 kernel 形状变化，
+不能全部解释成 launch 开销。C−B 衡量拆批结构内替换 decode 实现的收益，
+也包含关联的 sink 准备差异；C/A−1 才是相对整批 baseline 的净延迟变化。
+
+| Decode tokens | Prefill tokens | A µs | B µs | C µs | B−A µs | C−B µs | C/A−1 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 8 | 128 | 129.61 | 142.50 | 93.22 | +12.90 | -49.28 | -28.08% |
+| 8 | 512 | 272.05 | 330.08 | 281.02 | +58.03 | -49.06 | +3.29% |
+| 8 | 2048 | 1035.45 | 1078.37 | 1042.47 | +42.92 | -35.90 | +0.68% |
+| 32 | 128 | 136.24 | 146.85 | 113.62 | +10.61 | -33.23 | -16.60% |
+| 32 | 512 | 311.99 | 335.60 | 303.36 | +23.61 | -32.25 | -2.77% |
+| 32 | 2048 | 1049.35 | 1086.89 | 1063.49 | +37.55 | -23.40 | +1.35% |
+| 128 | 128 | 191.36 | 197.26 | 188.78 | +5.90 | -8.49 | -1.35% |
+| 128 | 512 | 383.94 | 388.77 | 377.71 | +4.83 | -11.06 | -1.62% |
+| 128 | 2048 | 1143.67 | 1149.92 | 1131.77 | +6.25 | -18.14 | -1.04% |
+
+九组中，B 的中位数都比 A 慢；C 在每组的全部 12 轮中都比 B 快。
+因此这批输入里，Triton decode 确实改善了拆批路径。净结果有六组加速、三组
+回退，各组 12 轮的 C/A 快慢方向一致。例如 8+512，拆批增加约 58.03 µs，
+替换 decode 省约 49.06 µs，净增加约 8.96 µs（3.29%）。不能据此推出单一的
+prefill 长度临界点：decode 数量、KV 访问与原生 kernel 形状都影响收益。
+128 decode 的净收益仅约 1–1.6%，仍需目标硬件和真实请求分布复验。
+
+复用原输入生成与 FP32 reference，每个形状的 A/B/C 都逐段比较最后一组输入
+的全部 token，27 组形状/路径检查通过（`rtol=0.02, atol=0.01`）。
+每个 decode 请求独立 16K 上下文，prefill 是一个共享 8K 前缀的请求；随机
+TopK 按 query 位置限制为因果范围。四组独立输入轮换，未显式 flush L2。
+每方案 12 轮、每轮 `rep=100ms`；六种执行顺序各重复两次，表中为各方案
+中位数及其差值/比值。索引转换、sink 准备、attention、merge 计入 CUDA
+Graph/event 时间；输入生成、Q head padding、Python/metadata builder 不计时。
+原生仍为本地 pad64 版本，不代表支持 8 heads 的新版 FlashMLA。
+
+GPU 进程监控 224 次采样仅见本次 benchmark PID `2090390`，未观察到其他
+计算进程。Torch `2.13.0+cu129`、Triton `3.7.1`、CUDA `12.9`；原始样本、
+执行顺序、seed、GPU UUID 和 demo 源码 SHA256 见
+[h100_mixed_dispatch_abc.json](results/h100_mixed_dispatch_abc.json)。
+
+保持 `hy4_smallhead_mixed=false` 为默认；此次没有新增按样本拟合的自动门控。
+这是单卡 Attention backend 实验，不是 TP8 Serving，也没有测量 TTFT/TPOT。
+H200 TP8 的最终启用判断留待真实 Serving A/B。
+
+```bash
+CUDA_VISIBLE_DEVICES=7 PYTHONPATH=/tmp/hy4-smallhead-bootstrap \
+TRITON_CACHE_DIR=/tmp/hy4-plain-production-cache \
+.venv/bin/python benchmarks/kernels/benchmark_hy4_smallhead_mixed.py \
+  --decodes 8 32 128 --prefills 128 512 2048 --rounds 12 --rep 100 \
+  --output mixed-abc.json
+```
+
+## 首轮混合 batch A/C：Triton decode + 原生 prefill
 
 实现基于 `d0665c674c`，新增 `hy4_smallhead_mixed` 实验选项，默认 false。
 需同时开启 `hy4_smallhead_triton`，并使用 BF16 KV。现有纯 decode 路径保留。

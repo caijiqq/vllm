@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
-"""Demo: native BF16 mixed attention vs Triton decode + native prefill."""
+"""Demo: joint native (A), split native (B), Triton + native (C) attention."""
 
 import argparse
+import hashlib
+import itertools
 import json
 import os
 import statistics
@@ -17,6 +19,30 @@ from vllm.models.hy_v4.nvidia.flashmla_sparse import (
     HYV4FlashMLASparseMetadata,
 )
 from vllm.triton_utils import triton
+from vllm.v1.attention.backends.mla.sparse_utils import (
+    flat_kv_row_view,
+    triton_convert_req_index_to_global_index,
+)
+
+
+def split_native(impl, q, kv, indices, md, nd):
+    """B: same conversion/output as C, with only the decode implementation changed."""
+    rows, block_stride = flat_kv_row_view(kv, md.block_size)
+    physical, lengths = triton_convert_req_index_to_global_index(
+        md.req_id_per_token[: q.shape[0]],
+        md.block_table,
+        indices,
+        BLOCK_SIZE=md.block_size,
+        BLOCK_STRIDE_ROWS=block_stride,
+        NUM_TOPK_TOKENS=indices.shape[1],
+        return_valid_counts=True,
+    )
+    output = q.new_empty((q.shape[0], 64, 512))
+    for sl in (slice(0, nd), slice(nd, q.shape[0])):
+        impl._bf16_flash_mla_kernel(
+            q[sl], rows, physical[sl], lengths[sl], 8, out=output[sl]
+        )
+    return output[:, :8]
 
 
 def main():
@@ -29,6 +55,7 @@ def main():
     args = parser.parse_args()
     torch.manual_seed(42)
     rows = []
+    orders = list(itertools.permutations(("A", "B", "C")))
     for nd in args.decodes:
         for np in args.prefills:
             t = nd + np
@@ -69,20 +96,25 @@ def main():
                 impl.sinks = sinks
 
             # All inputs use the same deterministic sink values.
-            def run(enabled, inputs=inputs, impl=impl, nd=nd):
+            def run(mode, inputs=inputs, impl=impl, nd=nd):
                 for q, kv, indices, md in inputs:
-                    out, _ = impl._forward_bf16_kv(
-                        q,
-                        kv,
-                        indices,
-                        replace(md, smallhead_decode_tokens=nd if enabled else 0),
-                        8,
-                    )
+                    if mode == "B":
+                        out = split_native(impl, q, kv, indices, md, nd)
+                    else:
+                        out, _ = impl._forward_bf16_kv(
+                            q,
+                            kv,
+                            indices,
+                            replace(
+                                md, smallhead_decode_tokens=nd if mode == "C" else 0
+                            ),
+                            8,
+                        )
                 return out
 
-            # Warm compilation, then check both paths against FP32 in small chunks.
-            for enabled in (False, True):
-                out = run(enabled)
+            # Warm compilation, then check all three paths against FP32 in small chunks.
+            for mode in ("A", "B", "C"):
+                out = run(mode)
                 q, kv, ids, md = inputs[-1]
                 physical = (
                     md.block_table[md.req_id_per_token.long()].gather(
@@ -99,21 +131,23 @@ def main():
                     torch.testing.assert_close(
                         out[sl].float(), expected, rtol=0.02, atol=0.01
                     )
-            samples = {False: [], True: []}
+            samples = {mode: [] for mode in ("A", "B", "C")}
             for i in range(args.rounds):
-                for enabled in (False, True) if i % 2 == 0 else (True, False):
+                for mode in orders[i % len(orders)]:
                     ms = triton.testing.do_bench_cudagraph(
-                        lambda enabled=enabled: run(enabled), rep=args.rep
+                        lambda mode=mode: run(mode), rep=args.rep
                     )
-                    samples[enabled].append(ms * 1000 / len(inputs))
+                    samples[mode].append(ms * 1000 / len(inputs))
             row = dict(
                 decode_tokens=nd,
                 prefill_tokens=np,
                 pool=len(inputs),
-                native_us=statistics.median(samples[False]),
-                split_dispatch_us=statistics.median(samples[True]),
-                native_samples_us=samples[False],
-                split_samples_us=samples[True],
+                native_us=statistics.median(samples["A"]),
+                split_dispatch_us=statistics.median(samples["C"]),
+                split_native_us=statistics.median(samples["B"]),
+                split_native_samples_us=samples["B"],
+                native_samples_us=samples["A"],
+                split_samples_us=samples["C"],
             )
             rows.append(row)
             print(json.dumps(row), flush=True)
@@ -121,6 +155,15 @@ def main():
                 json.dumps(
                     dict(
                         gpu=torch.cuda.get_device_name(),
+                        gpu_uuid=str(torch.cuda.get_device_properties(0).uuid),
+                        cuda=torch.version.cuda,
+                        seed=42,
+                        variant_order=[
+                            orders[i % len(orders)] for i in range(args.rounds)
+                        ],
+                        benchmark_sha256=hashlib.sha256(
+                            Path(__file__).read_bytes()
+                        ).hexdigest(),
                         cuda_visible_devices=os.getenv("CUDA_VISIBLE_DEVICES"),
                         torch=torch.__version__,
                         triton=triton.__version__,
