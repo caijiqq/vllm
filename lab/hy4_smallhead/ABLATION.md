@@ -4,6 +4,9 @@
 本轮只增加实验脚本与证据，生产 Kernel、Attention Backend、Scheduler、权重和 iHC
 均未修改。H200 仍需用户手动复测。
 
+以下保留迁移前的消融记录。随后已将测得的普通 Triton 配置用于生产，
+迁移验证及性能数据的来源见 [RESULTS](RESULTS.md)。
+
 ## 结论
 
 **本负载需要合适的布局与数据搬运，但不要求必须用 Gluon。** 调优后的普通
@@ -157,5 +160,6 @@ ncu --profile-from-start off \
 
 正式 profiler 实测只额外采集 Tables 中的四个 shared load/store bank-conflict 和
 wavefront 指标，以减少 replay passes；上面的 Tables 命令提供同类指标及更多细节。
-`current` 指此报告基线的生产内核；从其他提交重跑时，应同时记录实际源码版本。
-实验内核中 `gl_control` 是 `daa54b83bb61f49954d8823a0a3197f448b6e480` 的冻结等价版本，粗扫已确认两者一致。
+`current` 保留历史名称，现固定指向 Gluon 基线，与 `gl_control` 等价。
+`production` 指当前普通 Triton 生产内核；新输出另记录生产源码 SHA256。
+冻结基线对应 `daa54b83bb61f49954d8823a0a3197f448b6e480`，粗扫已确认与原生产内核一致。

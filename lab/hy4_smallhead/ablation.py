@@ -3,6 +3,7 @@
 """Same-input BF16 layout ablation; all arms share splits, partials and merge."""
 
 import argparse
+import hashlib
 import json
 import os
 import statistics
@@ -17,7 +18,9 @@ from vllm.triton_utils import triton
 
 # Each entry changes only the named parameter relative to its language's control.
 CONFIGS = {
-    "current": ("current", {}),
+    # Keep the historical result name tied to the frozen Gluon baseline.
+    "current": ("gluon", {}),
+    "production": ("production", {"num_stages": 2}),
     "gl_control": ("gluon", {}),
     "gl_loadstore": ("gluon", {"ASYNC_KV": False}),
     "gl_no_swizzle": ("gluon", {"MAX_PHASE": 1}),
@@ -67,9 +70,10 @@ def launch(name, data, splits, merge=True):
     options = {"num_warps": 4, "num_stages": 1, **knobs}
     if kind == "triton":
         kernel = triton_split[(t, splits)](*args, **options)
+    elif kind == "production":
+        kernel = _split_kv[(t, splits)](*args, **options)
     else:
-        fn = _split_kv if kind == "current" else gluon_split
-        kernel = fn[(t, splits)](*args, True, True, **options)
+        kernel = gluon_split[(t, splits)](*args, True, True, **options)
     if merge:
         _softmax_merge[(t, heads)](
             partial, sinks, out, lse, heads, splits, True, num_warps=4
@@ -218,7 +222,13 @@ def main():
                         topk=2048,
                         independent_requests=True,
                         timing="cuda_graph_events_preallocated",
-                        source_commit="daa54b83bb61f49954d8823a0a3197f448b6e480",
+                        baseline_commit="daa54b83bb61f49954d8823a0a3197f448b6e480",
+                        production_source_sha256=hashlib.sha256(
+                            (
+                                Path(__file__).resolve().parents[2]
+                                / "vllm/models/hy_v4/nvidia/smallhead_sparse_decode.py"
+                            ).read_bytes()
+                        ).hexdigest(),
                         results=rows,
                     ),
                     indent=2,

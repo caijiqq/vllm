@@ -3,110 +3,76 @@
 """Triton BF16 sparse decode adapted from minatoyukinaa/vllm add_decode_kernel.
 
 Reference: c1252328ad, vllm/models/hy_v4/nvidia/sparse_mla_decode.py (TileLang).
-Gluon supplies explicit shared-memory copies and MMA layouts in Triton.
+Two pipeline stages let Triton generate the shared-memory copies and layouts.
 """
 
 import torch
 
 from vllm import envs
-from vllm.triton_utils import gl, gluon, tl, triton
-
-async_copy = gl.nvidia.ampere.async_copy
-mma_v2 = gl.nvidia.ampere.mma_v2
+from vllm.triton_utils import tl, triton
 
 
-@gluon.jit
-def _copy_shared(dst, src, mask, ALIGNED: gl.constexpr):
-    if ALIGNED:
-        async_copy.async_copy_global_to_shared(dst, src, mask)
-    else:
-        dst.store(gl.load(src, mask, other=0))
-
-
-@gluon.jit
+@triton.jit
 def _split_kv(
     Q,
     KV,
     Indices,
     Lengths,
     Partial,
-    QT: gl.constexpr,
-    QH: gl.constexpr,
-    KR: gl.constexpr,
-    IT: gl.constexpr,
-    IK: gl.constexpr,
-    ROWS: gl.constexpr,
-    HEADS: gl.constexpr,
-    TOPK: gl.constexpr,
-    SCALE: gl.constexpr,
-    SPLITS: gl.constexpr,
-    HAS_LENGTHS: gl.constexpr,
-    ALIGNED_Q: gl.constexpr,
-    ALIGNED_KV: gl.constexpr,
+    QT: tl.constexpr,
+    QH: tl.constexpr,
+    KR: tl.constexpr,
+    IT: tl.constexpr,
+    IK: tl.constexpr,
+    ROWS: tl.constexpr,
+    HEADS: tl.constexpr,
+    TOPK: tl.constexpr,
+    SCALE: tl.constexpr,
+    SPLITS: tl.constexpr,
+    HAS_LENGTHS: tl.constexpr,
 ):
-    token = gl.program_id(0)
-    split = gl.program_id(1)
-    BH: gl.constexpr = max(16, HEADS)
-    COPY: gl.constexpr = gl.BlockedLayout([1, 8], [4, 8], [4, 1], [1, 0])
-    MMA: gl.constexpr = gl.NVMMADistributedLayout(
-        version=[2, 0], warps_per_cta=[1, 4], instr_shape=[16, 8]
+    token, split = tl.program_id(0), tl.program_id(1)
+    BH: tl.constexpr = max(16, HEADS)
+    BN: tl.constexpr = 64
+    h = tl.arange(0, BH)
+    d = tl.arange(0, 512)
+    r = tl.arange(0, 64)
+    q = tl.load(
+        Q + token * QT + h[:, None] * QH + d[None, :], h[:, None] < HEADS, other=0
     )
-    A: gl.constexpr = gl.DotOperandLayout(0, MMA, 2)
-    B: gl.constexpr = gl.DotOperandLayout(1, MMA, 2)
-    SH: gl.constexpr = gl.SwizzledSharedLayout(8, 1, 8, [1, 0])
-    h = gl.arange(0, BH, layout=gl.SliceLayout(1, COPY))
-    d = gl.arange(0, 512, layout=gl.SliceLayout(0, COPY))
-    r = gl.arange(0, 64, layout=gl.SliceLayout(0, COPY))
-    qs = gl.allocate_shared_memory(gl.bfloat16, [BH, 512], SH)
-    qr = gl.allocate_shared_memory(gl.bfloat16, [BH, 64], SH)
-    ks = gl.allocate_shared_memory(gl.bfloat16, [64, 512], SH)
-    kr = gl.allocate_shared_memory(gl.bfloat16, [64, 64], SH)
-    qbase = Q + token * QT + h[:, None] * QH
-    _copy_shared(qs, qbase + d[None, :], h[:, None] < HEADS, ALIGNED_Q)
-    _copy_shared(qr, qbase + 512 + r[None, :], h[:, None] < HEADS, ALIGNED_Q)
-    async_copy.commit_group()
-    async_copy.wait_group(0)
-    acc = gl.full([BH, 512], 0, gl.float32, MMA)
-    m = gl.full([BH], float("-inf"), gl.float32, gl.SliceLayout(1, MMA))
-    denom = gl.full([BH], 0, gl.float32, gl.SliceLayout(1, MMA))
-    blocks = gl.cdiv(gl.cdiv(TOPK, 64), SPLITS)
+    qr = tl.load(
+        Q + token * QT + h[:, None] * QH + 512 + r[None, :], h[:, None] < HEADS, other=0
+    )
+    acc = tl.full((BH, 512), 0, tl.float32)
+    m = tl.full((BH,), float("-inf"), tl.float32)
+    denom = tl.full((BH,), 0, tl.float32)
+    blocks = tl.cdiv(tl.cdiv(TOPK, BN), SPLITS)
     for block in range(
-        split * blocks, gl.minimum((split + 1) * blocks, gl.cdiv(TOPK, 64))
+        split * blocks, tl.minimum((split + 1) * blocks, tl.cdiv(TOPK, BN))
     ):
-        n = block * 64 + gl.arange(0, 64, layout=gl.SliceLayout(1, COPY))
-        ids = gl.load(Indices + token * IT + n * IK, n < TOPK, other=-1)
+        n = block * BN + tl.arange(0, BN)
+        ids = tl.load(Indices + token * IT + n * IK, n < TOPK, other=-1)
         valid = (n < TOPK) & (ids >= 0) & (ids < ROWS)
         if HAS_LENGTHS:
-            valid &= n < gl.load(Lengths + token)
-        row = KV + gl.where(valid, ids, 0).to(gl.int64) * KR
-        _copy_shared(ks, row[:, None] + d[None, :], valid[:, None], ALIGNED_KV)
-        _copy_shared(kr, row[:, None] + 512 + r[None, :], valid[:, None], ALIGNED_KV)
-        async_copy.commit_group()
-        async_copy.wait_group(0)
-        score = gl.full([BH, 64], 0, gl.float32, MMA)
-        for chunk in gl.static_range(4):
-            a = qs.slice(chunk * 128, 128, 1).load(A)
-            b = ks.slice(chunk * 128, 128, 1).permute([1, 0]).load(B)
-            score = mma_v2(a, b, score)
-        score = mma_v2(qr.load(A), kr.permute([1, 0]).load(B), score)
-        valid_mma = gl.convert_layout(valid, gl.SliceLayout(0, MMA))
-        score = gl.where(
-            valid_mma[None, :], score * (SCALE * 1.4426950408889634), float("-inf")
+            valid &= n < tl.load(Lengths + token)
+        row = KV + tl.where(valid, ids, 0).to(tl.int64) * KR
+        kv = tl.load(row[:, None] + d[None, :], valid[:, None], other=0)
+        rope = tl.load(row[:, None] + 512 + r[None, :], valid[:, None], other=0)
+        score = tl.dot(q, tl.trans(kv)) + tl.dot(qr, tl.trans(rope))
+        score = tl.where(
+            valid[None, :], score * (SCALE * 1.4426950408889634), float("-inf")
         )
-        next_m = gl.maximum(m, gl.max(score, 1))
-        safe_m = gl.where(next_m == float("-inf"), 0.0, next_m)
-        alpha = gl.exp2(m - safe_m)
-        p = gl.exp2(score - safe_m[:, None])
-        denom = denom * alpha + gl.sum(p, 1)
-        acc *= alpha[:, None]
-        acc = mma_v2(gl.convert_layout(p.to(gl.bfloat16), A), ks.load(B), acc)
+        next_m = tl.maximum(m, tl.max(score, 1))
+        safe_m = tl.where(next_m == float("-inf"), 0.0, next_m)
+        alpha = tl.exp2(m - safe_m)
+        p = tl.exp2(score - safe_m[:, None])
+        denom = denom * alpha + tl.sum(p, 1)
+        acc = acc * alpha[:, None] + tl.dot(p.to(tl.bfloat16), kv)
         m = next_m
-    oh = gl.arange(0, BH, layout=gl.SliceLayout(1, MMA))
-    od = gl.arange(0, 512, layout=gl.SliceLayout(0, MMA))
-    base = (token * SPLITS + split) * HEADS + oh
-    gl.store(Partial + base[:, None] * 514 + od[None, :], acc, oh[:, None] < HEADS)
-    gl.store(Partial + base * 514 + 512, m, oh < HEADS)
-    gl.store(Partial + base * 514 + 513, denom, oh < HEADS)
+    base = (token * SPLITS + split) * HEADS + h
+    tl.store(Partial + base[:, None] * 514 + d[None, :], acc, h[:, None] < HEADS)
+    tl.store(Partial + base * 514 + 512, m, h < HEADS)
+    tl.store(Partial + base * 514 + 513, denom, h < HEADS)
 
 
 @triton.jit
@@ -202,10 +168,8 @@ def smallhead_sparse_decode(
         softmax_scale,
         num_splits,
         topk_length is not None,
-        q.storage_offset() % 8 == q.stride(0) % 8 == q.stride(1) % 8 == 0,
-        kv.storage_offset() % 8 == kv.stride(0) % 8 == 0,
         num_warps=4,
-        num_stages=1,
+        num_stages=2,
     )
     _softmax_merge[(tokens, heads)](
         partial, sinks, out, lse, heads, num_splits, sinks is not None, num_warps=4

@@ -10,10 +10,10 @@
 - 参考 [minatoyukinaa/vllm 的 add_decode_kernel](https://github.com/minatoyukinaa/vllm/tree/c1252328ad5d653939a7f2eaaa5bcdcc1baa2aa3)，
   固定到 `c1252328ad5d653939a7f2eaaa5bcdcc1baa2aa3`；实现提交为
   `87113d03b369ee56218cf54868895e41ce5ae3b7`。只借鉴其 decode 设计，未合并分支。
-- 参考实现是 TileLang + BF16 KV。本实现按用户确认使用 **Triton/Gluon + BF16 KV**，
-  替换此前 FP8 Triton 方案；没有引入 TileLang 依赖。
-- 原 `vllm-hy4-dev` HEAD `e3e9cdee60`、`vllm-hy4-ihc` HEAD `da9bc79158`
-  保持不变。权重、Scheduler、CUDA FlashMLA、iHC 代码均未修改。
+- 参考实现是 TileLang + BF16 KV。生产路径使用 **普通 Triton + BF16 KV**，
+  Gluon 版本保留在实验目录和 Git 历史中供对照；没有引入 TileLang 依赖。
+- 初次审计时 `vllm-hy4-dev` HEAD 为 `e3e9cdee60`、`vllm-hy4-ihc` HEAD 为
+  `da9bc79158`。本任务没有修改这些 worktree、权重、Scheduler、CUDA FlashMLA 或 iHC。
 
 ## 实际布局与实现
 
@@ -38,9 +38,11 @@ BF16 KV 逻辑布局为 `[pages,page_size,576]`：512 个 latent 和 64 个 RoPE
 它保留原生 FlashMLA。FP8 模型权重与 KV cache dtype 是两个独立选项；新 kernel
 不会把 FP8 KV 隐式转成 BF16。BF16 KV 相比 656B FP8 KV 占用约 1.76 倍空间。
 
-`smallhead_sparse_decode.py` 使用 64-key tile、128 threads，支持 8/16/32 heads。
-对齐输入通过 `cp.async` 直接进入 shared memory，用 MMA 做 QK 与 PV，FP32
-在线 softmax。未对齐视图使用普通加载。每个 split 保存 512 维 accumulator、
+`smallhead_sparse_decode.py` 使用普通 `@triton.jit`、`tl.load` 和 `tl.dot`，
+固定 64-key tile、4 warps、`num_stages=2`，支持 8/16/32 heads。对齐 BF16 gather
+的异步拷贝、shared swizzle 和 MMA 布局由编译器生成；生产代码没有 Gluon 布局
+或手写 shared-memory descriptor。未对齐视图沿用相同接口并已通过测试。
+QK/PV 使用 Tensor Core，softmax 和 accumulator 为 FP32。每个 split 保存 512 维 accumulator、
 max 和 denominator，第二个 kernel 合并后只加一次 sink。返回的自然对数 LSE
 不包含 sink；空行输出零、LSE 为负无穷。
 
@@ -92,9 +94,10 @@ JSON 的 `splits=0` 表示上述自适应策略。`estimated_kv_gbps` 按 `T*K*1
 内核版本有差异，不能直接拿本机加速比与同事的 Serving 数字对比。
 详见 [结果及 SM 分析](RESULTS.md)。
 
-布局必要性另做了 BF16 同口径消融：调优的普通 Triton 与 Gluon 性能接近，
-shared swizzle 和异步 KV 加载则有实测收益。完整数据与复现命令见
-[Gluon 消融报告](ABLATION.md)。
+普通 Triton 生产配置来自已完成的 BF16 同口径消融，1–512 tokens 的延迟与
+Gluon 相差约 -0.24% 至 +2.24%。迁移后 23 项回归通过；按用户选择沿用已有
+性能验证，没有在其他任务占卡期间重新计时。数据来源及限制见
+[迁移验证](RESULTS.md)，历史布局消融见 [Gluon 消融报告](ABLATION.md)。
 
 可选的 Nsight Compute demo，编译和输入准备在采样区间之外：
 
