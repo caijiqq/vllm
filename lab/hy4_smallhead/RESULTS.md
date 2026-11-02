@@ -1,5 +1,21 @@
 # HY4 small-head 验证结果
 
+## 当前方案：仅纯 decode 加速
+
+按用户决定，生产 Backend 和 Triton kernel 已恢复为 `d0665c674c` 的纯 decode
+实现。仅显式开启 `hy4_smallhead_triton` 且满足适用条件的纯单 token decode
+批次使用 Triton；纯 prefill、混合批次及多 token decode 整体走原生 FlashMLA。
+`hy4_smallhead_mixed` 和混合拆分路径已移除，混合 benchmark 也从当前目录移除。
+
+本次在 GPU7 H100 复用已有测试，**34 passed**：覆盖纯 decode ON/OFF、
+prefill/混合批次整体原生调用、短 prefill 阶段识别、FP32/FlashMLA 对照和
+CUDA Graph replay。代码检查通过。两个生产文件与 `d0665c674c` 完全一致；
+此次未重新进行性能计时，纯 decode 性能数据仍为下方此前的验证结果。
+
+以下三个混合分发章节为历史实验记录；其中的开关及命令只适用于历史提交
+`f775dcc1d3`，不能在当前版本用于开启或测量混合加速。复现时应使用该历史提交
+的独立 worktree。原始结果保留用于分析，不再继续混合分发开发。
+
 ## 混合分发的实际执行计数
 
 2026-11-02，GPU7 H100；生产代码保持 `b9efac57c3`，性能实验提交为

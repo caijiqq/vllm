@@ -84,7 +84,6 @@ def _softmax_merge(
     HEADS: tl.constexpr,
     SPLITS: tl.constexpr,
     HAS_SINK: tl.constexpr,
-    OUT_T: tl.constexpr = 0,
 ):
     t, h = tl.program_id(0), tl.program_id(1)
     s = tl.arange(0, SPLITS)
@@ -101,8 +100,7 @@ def _softmax_merge(
     value /= tl.where(denom > 0, denom, 1.0)
     if HAS_SINK:
         value /= 1.0 + tl.exp2(tl.load(Sinks + h) * 1.4426950408889634 - lse2)
-    stride: tl.constexpr = OUT_T or HEADS * 512
-    tl.store(Out + t * stride + h * 512 + d, tl.where(denom > 0, value, 0.0))
+    tl.store(Out + (t * HEADS + h) * 512 + d, tl.where(denom > 0, value, 0.0))
     tl.store(
         LSE + t * HEADS + h,
         tl.where(denom > 0, lse2 * 0.6931471805599453, float("-inf")),
@@ -118,13 +116,11 @@ def smallhead_sparse_decode(
     *,
     topk_length: torch.Tensor | None = None,
     num_splits: int | None = None,
-    out: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """BF16 Q [T,H,576], BF16 KV [rows,576], physical indices [T,K].
 
     Returns BF16 output [T,H,512] and sink-free FP32 LSE [T,H]. Invalid
     indices (including out-of-range slots) and entries beyond lengths are masked.
-    An optional output buffer may have padding between token rows.
     """
     tokens, heads, dim = q.shape
     assert q.dtype == kv.dtype == torch.bfloat16
@@ -139,12 +135,7 @@ def smallhead_sparse_decode(
     if topk_length is not None:
         assert topk_length.dtype == torch.int32 and topk_length.shape == (tokens,)
         assert topk_length.device == q.device and topk_length.is_contiguous()
-    if out is None:
-        out = q.new_empty((tokens, heads, 512))
-    else:
-        assert out.shape == (tokens, heads, 512) and out.dtype == q.dtype
-        assert out.device == q.device and out.stride(1) == 512
-        assert out.stride(2) == 1 and out.stride(0) >= heads * 512
+    out = q.new_empty((tokens, heads, 512))
     lse = torch.empty((tokens, heads), device=q.device, dtype=torch.float32)
     if tokens == 0:
         return out, lse
@@ -181,14 +172,6 @@ def smallhead_sparse_decode(
         num_stages=2,
     )
     _softmax_merge[(tokens, heads)](
-        partial,
-        sinks,
-        out,
-        lse,
-        heads,
-        num_splits,
-        sinks is not None,
-        OUT_T=out.stride(0),
-        num_warps=4,
+        partial, sinks, out, lse, heads, num_splits, sinks is not None, num_warps=4
     )
     return out, lse

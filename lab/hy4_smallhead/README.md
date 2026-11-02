@@ -54,19 +54,13 @@ HF override `hy4_smallhead_triton` 默认 false。开启后在 metadata 构造�
 SM90、BF16 cache/Q、8/16/32 heads、512+64 维、PCP=DCP=1、无 HiSparse、
 单 token 纯 Decode、`T*heads <= 4096` 才进入 Triton。
 
-实验选项 `hy4_smallhead_mixed` 默认 false；与 `hy4_smallhead_triton=true` 一起
-开启后，混合 batch 中连续的单 token decode 前缀使用 Triton，其余 token 使用
-原生 FlashMLA。依据 CPU 上的真实阶段与 query 长度识别前缀，短 prefill 不会
-误入 Triton；遇到短 prefill 或多 token decode 后的请求也保留原生路径。
-`T*heads` 的限制只计算选中的 decode 前缀。两段共用 BF16 cache，一次索引转换，
-同一 stream 顺序执行，直接写入 head-padded 输出的不同切片，无输出拼接。
-没有修改 Scheduler。混合路径并非所有比例都更快，实测见 [RESULTS](RESULTS.md)。
+当前仅优化纯单 token decode 批次。纯 prefill、混合批次和多 token decode
+整体沿用原生 FlashMLA，不在 Backend 内拆分执行。短 prefill 即使被父类归入
+小 query 批次，也由真实阶段标记排除。`hy4_smallhead_mixed` 已移除，旧配置
+中残留该字段也不会开启混合分发。关闭 `hy4_smallhead_triton` 可恢复全部原生路径。
 
-复用 `benchmark_hy4_smallhead_mixed.py` 做三组对照：A 整批原生；B 拆批后两段
-均用原生；C 拆批后 Triton decode + 原生 prefill。GPU7 的 H100 实测九组、
-每组 12 轮：C 均快于 B，但相对 A 有六组加速、三组回退，净延迟变化
-为 -28.08% 至 +3.29%。这说明拆批成本可能抵消 decode 收益；当前保持混合
-实验开关默认关闭。完整数据、正确性范围与复测命令见 [RESULTS](RESULTS.md)。
+混合分发实验已停止，demo 保留在历史提交 `f775dcc1d3` 中；历史结果和执行
+计数仍保存在 [RESULTS](RESULTS.md)，不代表当前生产路径。
 
 ## 本地验证
 
@@ -74,7 +68,8 @@ SM90、BF16 cache/Q、8/16/32 heads、512+64 维、PCP=DCP=1、无 HiSparse、
 只增加 demo 级用例。FP32 和原生 FlashMLA 双对照，覆盖 splits、strided/未对齐
 视图、无效索引、长度、空行、无穷 sink、TopK 尾块、Graph replay，以及 Backend
 ON/OFF 的真实页表映射和 prefill 路由。output 容差 `rtol=0.02, atol=0.01`，
-LSE 容差 `rtol=atol=1e-4`。相关回归 23 项通过，未做完整模型精度评估。
+LSE 容差 `rtol=atol=1e-4`。恢复纯 decode 方案后，相关回归 34 项通过，包含混合批次整体回退和阶段识别；
+未做完整模型精度评估。
 
 本机为 H100 80GB SM90，Torch 2.13.0+cu129、Triton 3.7.1、Python 3.12.3，
 已安装 vLLM 扩展为 `0.32.0+cu129`。本 worktree 使用独立 `.venv`，通过

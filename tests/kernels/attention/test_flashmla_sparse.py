@@ -72,7 +72,7 @@ def test_hy4_smallhead_unaligned_tail():
 @pytest.mark.parametrize("enabled", [False, True])
 @pytest.mark.parametrize("nd", [0, 1, 2, 4])
 def test_hy4_smallhead_backend(monkeypatch, enabled, nd):
-    """Mixed requests dispatch by phase and preserve outputs during graph replay."""
+    """Only pure decode uses Triton; prefill and mixed batches stay on FlashMLA."""
     from types import SimpleNamespace
 
     from benchmarks.kernels.benchmark_hy4_smallhead_decode import make_inputs, reference
@@ -95,7 +95,7 @@ def test_hy4_smallhead_backend(monkeypatch, enabled, nd):
         block_size=128,
         block_table=table.int(),
         req_id_per_token=req_ids,
-        smallhead_decode_tokens=nd if enabled else 0,
+        use_smallhead_decode=enabled and nd == 4,
     )
     impl = object.__new__(HYV4FlashMLASparseImpl)
     impl.dcp_world_size = impl.pcp_world_size = 1
@@ -139,8 +139,8 @@ def test_hy4_smallhead_backend(monkeypatch, enabled, nd):
 
     out = run()
     torch.testing.assert_close(out.float(), expected, rtol=0.02, atol=0.01)
-    if enabled and nd:
-        assert calls == [("triton", nd)] + ([("native", 4 - nd)] if nd < 4 else [])
+    if enabled and nd == 4:
+        assert calls == [("triton", 4)]
     else:
         assert calls == [("native", 4)]
     torch.accelerator.synchronize()
@@ -156,22 +156,21 @@ def test_hy4_smallhead_backend(monkeypatch, enabled, nd):
 @pytest.mark.parametrize(
     "lengths,phases,parent_decodes,enabled,expected",
     [
-        ([1, 1], [False, False], 2, True, 2),
-        ([1], [True], 1, True, 0),
-        ([2], [False], 1, True, 0),
-        ([1], [False], 1, False, 0),
-        ([1, 1, 300], [False, False, True], 2, True, 2),
-        ([1, 1, 2], [False, True, True], 3, True, 1),
-        ([1, 1, 1], [False, True, False], 3, True, 1),
-        ([1, 300], [False, True], 1, True, 1),
-        ([300], [True], 0, True, 0),
+        ([1, 1], [False, False], 2, True, True),
+        ([1], [True], 1, True, False),
+        ([2], [False], 1, True, False),
+        ([1], [False], 1, False, False),
+        ([1, 1, 300], [False, False, True], 2, True, False),
+        ([1, 1, 2], [False, True, True], 3, True, False),
+        ([1, 1, 1], [False, True, False], 3, True, False),
+        ([1, 300], [False, True], 1, True, False),
+        ([300], [True], 0, True, False),
     ],
 )
-@pytest.mark.parametrize("mixed", [False, True])
 def test_hy4_smallhead_metadata_phase(
-    monkeypatch, lengths, phases, parent_decodes, enabled, expected, mixed
+    monkeypatch, lengths, phases, parent_decodes, enabled, expected
 ):
-    """Only the true single-token decode prefix uses Triton, even for short prompts."""
+    """Short prefills and any mixed or multi-token batch must use FlashMLA."""
     from types import SimpleNamespace
 
     from vllm.models.hy_v4.nvidia.flashmla_sparse import (
@@ -185,20 +184,19 @@ def test_hy4_smallhead_metadata_phase(
         FlashMLASparseMetadataBuilder,
         "build",
         lambda *a: SimpleNamespace(
-            num_decodes=parent_decodes, num_actual_tokens=sum(lengths)
+            num_decode_tokens=sum(lengths[:parent_decodes]),
+            num_actual_tokens=sum(lengths),
         ),
     )
     builder = object.__new__(HYV4FlashMLASparseMetadataBuilder)
     builder.smallhead_enabled = enabled
-    builder.smallhead_mixed = mixed
     builder.num_heads = 8
     common = SimpleNamespace(
         is_prefilling=torch.tensor(phases),
-        query_start_loc_cpu=torch.tensor([0] + lengths).cumsum(0),
+        max_query_len=max(lengths),
+        num_reqs=len(lengths),
     )
-    if not mixed and expected != sum(lengths):
-        expected = 0
-    assert builder.build(0, common).smallhead_decode_tokens == expected
+    assert builder.build(0, common).use_smallhead_decode is expected
 
 
 @pytest.mark.parametrize("sm120", [False, True])

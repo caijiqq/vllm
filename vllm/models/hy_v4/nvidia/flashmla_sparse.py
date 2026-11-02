@@ -17,7 +17,7 @@ The subclass intentionally keeps the inherited ``get_name()``
 `_canonicalize_sparse_mla_kv_cache_dtype` promotes a quantized KV cache to
 ``fp8_ds_mla`` for it, and `FlashMLASparseImpl` asserts that layout — so a new
 name would silently change KV cache behaviour. An opt-in BF16 Triton decode
-path uses an explicit decode-prefix count in attention metadata.
+path uses an explicit per-graph metadata flag.
 """
 
 from dataclasses import dataclass
@@ -33,10 +33,7 @@ from vllm.v1.attention.backends.mla.flashmla_sparse import (
     FlashMLASparseMetadata,
     FlashMLASparseMetadataBuilder,
 )
-from vllm.v1.attention.backends.mla.sparse_utils import (
-    flat_kv_row_view,
-    triton_convert_req_index_to_global_index,
-)
+from vllm.v1.attention.backends.mla.sparse_utils import flat_kv_row_view
 from vllm.v1.attention.ops.flashmla import (
     flash_mla_sparse_fwd,
     flash_mla_with_kvcache,
@@ -51,7 +48,7 @@ logger = init_logger(__name__)
 
 @dataclass
 class HYV4FlashMLASparseMetadata(FlashMLASparseMetadata):
-    smallhead_decode_tokens: int = 0
+    use_smallhead_decode: bool = False
 
 
 class HYV4FlashMLASparseMetadataBuilder(FlashMLASparseMetadataBuilder):
@@ -60,7 +57,6 @@ class HYV4FlashMLASparseMetadataBuilder(FlashMLASparseMetadataBuilder):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         config = self.model_config.hf_text_config
-        self.smallhead_mixed = getattr(config, "hy4_smallhead_mixed", False)
         self.smallhead_enabled = (
             getattr(config, "hy4_smallhead_triton", False)
             and current_platform.is_device_capability_family(90)
@@ -81,22 +77,17 @@ class HYV4FlashMLASparseMetadataBuilder(FlashMLASparseMetadataBuilder):
             super().build(common_prefix_len, common_attn_metadata, fast_build),
         )
         phases = common_attn_metadata.is_prefilling
-        metadata.smallhead_decode_tokens = 0
-        if (
+        # Decide before graph capture, using the host's true prefill/decode phase.
+        # Keep short prompt extensions and missing phase metadata on FlashMLA.
+        metadata.use_smallhead_decode = bool(
             self.smallhead_enabled
+            and common_attn_metadata.max_query_len == 1
+            and 0 < metadata.num_actual_tokens * self.num_heads <= 4096
+            and metadata.num_decode_tokens == metadata.num_actual_tokens
             and phases is not None
             and phases.device.type == "cpu"
-        ):
-            # Parent decode metadata may also include short prompt extensions.
-            n = metadata.num_decodes
-            starts = common_attn_metadata.query_start_loc_cpu[: n + 1]
-            eligible = ~phases[:n] & (starts[1:] - starts[:-1] == 1)
-            stops = (~eligible).nonzero(as_tuple=True)[0]
-            nd = int(stops[0].item()) if stops.numel() else n
-            if 0 < nd * self.num_heads <= 4096 and (
-                nd == metadata.num_actual_tokens or self.smallhead_mixed
-            ):
-                metadata.smallhead_decode_tokens = nd
+            and not phases[: common_attn_metadata.num_reqs].any().item()
+        )
         return metadata
 
 
@@ -275,8 +266,7 @@ class HYV4FlashMLASparseImpl(FlashMLASparseImpl):
     def _forward_bf16_kv(
         self, q, kv_c_and_k_pe_cache, topk_indices, attn_metadata, actual_num_heads
     ):
-        nd = getattr(attn_metadata, "smallhead_decode_tokens", 0)
-        if not nd:
+        if not getattr(attn_metadata, "use_smallhead_decode", False):
             return super()._forward_bf16_kv(
                 q, kv_c_and_k_pe_cache, topk_indices, attn_metadata, actual_num_heads
             )
@@ -285,51 +275,16 @@ class HYV4FlashMLASparseImpl(FlashMLASparseImpl):
         rows, block_stride = flat_kv_row_view(
             kv_c_and_k_pe_cache, attn_metadata.block_size
         )
-        if nd == q.shape[0]:
-            physical, _ = self._convert_logical_to_physical_topk(
-                topk_indices,
-                attn_metadata,
-                block_stride_rows=block_stride,
-                return_valid_counts=True,
-            )
-            return smallhead_sparse_decode(
-                q[:, :actual_num_heads], rows, physical, self.softmax_scale, self.sinks
-            )
-
-        # Convert the mixed batch once, preserving each token's request mapping.
-        physical, lengths = triton_convert_req_index_to_global_index(
-            attn_metadata.req_id_per_token[: q.shape[0]],
-            attn_metadata.block_table,
+        physical, _ = self._convert_logical_to_physical_topk(
             topk_indices,
-            BLOCK_SIZE=attn_metadata.block_size,
-            BLOCK_STRIDE_ROWS=block_stride,
-            NUM_TOPK_TOKENS=topk_indices.shape[1],
+            attn_metadata,
+            block_stride_rows=block_stride,
             return_valid_counts=True,
         )
-        padded_heads = (
-            (actual_num_heads + self.prefill_padding - 1)
-            // self.prefill_padding
-            * self.prefill_padding
+        # Mask -1 slots directly; a valid count need not describe a compact prefix.
+        return smallhead_sparse_decode(
+            q[:, :actual_num_heads], rows, physical, self.softmax_scale, self.sinks
         )
-        output = q.new_empty((q.shape[0], padded_heads, 512))
-        smallhead_sparse_decode(
-            q[:nd, :actual_num_heads],
-            rows,
-            physical[:nd],
-            self.softmax_scale,
-            self.sinks,
-            out=output[:nd, :actual_num_heads],
-        )
-        self._bf16_flash_mla_kernel(
-            q[nd:],
-            rows,
-            physical[nd:],
-            lengths[nd:],
-            actual_num_heads,
-            out=output[nd:],
-        )
-        # The opt-in path excludes DCP, so mixed-batch LSE is not consumed.
-        return output[:, :actual_num_heads], None
 
     def _bf16_flash_mla_kernel(
         self,
