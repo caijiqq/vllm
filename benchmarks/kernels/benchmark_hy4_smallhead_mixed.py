@@ -8,8 +8,10 @@ import itertools
 import json
 import os
 import statistics
+from collections import Counter
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
 import torch
 
@@ -45,6 +47,116 @@ def split_native(impl, q, kv, indices, md, nd):
     return output[:, :8]
 
 
+def audit_execution(run, impl, mode, nd, np, trace_dir):
+    """Log real attention slices at capture, then trace one four-input replay."""
+    from vllm.models.hy_v4.nvidia import smallhead_sparse_decode as decode_module
+
+    calls = []
+
+    def record(kind, fn):
+        def wrapped(q, *args, **kwargs):
+            out = kwargs.get("out")
+            calls.append(
+                dict(
+                    kind=kind,
+                    q_shape=list(q.shape),
+                    q_token_offset=q.storage_offset() // q.stride(0),
+                    q_storage=q.untyped_storage().data_ptr(),
+                    out_shape=list(out.shape) if out is not None else None,
+                    out_token_offset=(
+                        out.storage_offset() // out.stride(0)
+                        if out is not None
+                        else None
+                    ),
+                    out_storage=(
+                        out.untyped_storage().data_ptr() if out is not None else None
+                    ),
+                )
+            )
+            return fn(q, *args, **kwargs)
+
+        return wrapped
+
+    torch.accelerator.synchronize()
+    graph = torch.cuda.CUDAGraph()
+    with (
+        patch.object(
+            impl,
+            "_bf16_flash_mla_kernel",
+            record("native", impl._bf16_flash_mla_kernel),
+        ),
+        patch.object(
+            decode_module,
+            "smallhead_sparse_decode",
+            record("triton", decode_module.smallhead_sparse_decode),
+        ),
+        torch.cuda.graph(graph),
+    ):
+        captured = run(mode)
+    expected = {
+        "A": [("native", nd + np, 0)],
+        "B": [("native", nd, 0), ("native", np, nd)],
+        "C": [("triton", nd, 0), ("native", np, nd)],
+    }[mode]
+    assert [
+        (c["kind"], c["q_shape"][0], c["q_token_offset"]) for c in calls
+    ] == expected * 4
+    if mode != "A":
+        for decode, prefill in zip(calls[::2], calls[1::2]):
+            assert decode["q_storage"] == prefill["q_storage"]
+            assert decode["out_storage"] == prefill["out_storage"]
+            assert decode["out_token_offset"] == 0
+            assert prefill["out_token_offset"] == nd
+    with torch.profiler.profile(
+        activities=[
+            torch.profiler.ProfilerActivity.CPU,
+            torch.profiler.ProfilerActivity.CUDA,
+        ]
+    ) as prof:
+        graph.replay()
+        torch.accelerator.synchronize()
+    path = Path(trace_dir) / f"{nd}-{np}-{mode}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    prof.export_chrome_trace(str(path))
+    events = json.loads(path.read_text())["traceEvents"]
+    kernels = sorted(
+        (e for e in events if e.get("cat") == "kernel"), key=lambda e: e["ts"]
+    )
+    attention = [
+        e
+        for e in kernels
+        if any(
+            n in e["name"]
+            for n in ("sparse_attn_fwd_kernel", "_split_kv", "_softmax_merge")
+        )
+    ]
+    assert len(attention) == {"A": 4, "B": 8, "C": 12}[mode]
+    assert len({e["args"]["stream"] for e in kernels}) == 1
+    return dict(
+        calls=calls,
+        kernel_counts=dict(Counter(e["name"] for e in kernels)),
+        launches=[
+            dict(
+                name=e["name"],
+                grid=e["args"].get("grid"),
+                stream=e["args"].get("stream"),
+            )
+            for e in kernels
+        ],
+        copies=[
+            dict(
+                name=e["name"],
+                bytes=e["args"].get("bytes"),
+                stream=e["args"].get("stream"),
+            )
+            for e in events
+            if e.get("cat") == "gpu_memcpy"
+        ],
+        trace=str(path),
+        output_shape=list(captured.shape),
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--decodes", type=int, nargs="+", default=[8, 32, 128])
@@ -52,6 +164,9 @@ def main():
     parser.add_argument("--rounds", type=int, default=6)
     parser.add_argument("--rep", type=int, default=60)
     parser.add_argument("--output", required=True)
+    parser.add_argument(
+        "--audit-dir", help="Trace one replay per variant instead of timing"
+    )
     args = parser.parse_args()
     torch.manual_seed(42)
     rows = []
@@ -131,6 +246,32 @@ def main():
                     torch.testing.assert_close(
                         out[sl].float(), expected, rtol=0.02, atol=0.01
                     )
+            if args.audit_dir:
+                audits = {
+                    mode: audit_execution(run, impl, mode, nd, np, args.audit_dir)
+                    for mode in ("A", "B", "C")
+                }
+                rows.append(
+                    dict(decode_tokens=nd, prefill_tokens=np, pool=4, audits=audits)
+                )
+                Path(args.output).write_text(
+                    json.dumps(
+                        dict(
+                            gpu=torch.cuda.get_device_name(),
+                            cuda_visible_devices=os.getenv("CUDA_VISIBLE_DEVICES"),
+                            torch=torch.__version__,
+                            triton=triton.__version__,
+                            benchmark_sha256=hashlib.sha256(
+                                Path(__file__).read_bytes()
+                            ).hexdigest(),
+                            results=rows,
+                        ),
+                        indent=2,
+                    )
+                    + "\n"
+                )
+                print(f"Execution audit passed: {nd}+{np}", flush=True)
+                continue
             samples = {mode: [] for mode in ("A", "B", "C")}
             for i in range(args.rounds):
                 for mode in orders[i % len(orders)]:

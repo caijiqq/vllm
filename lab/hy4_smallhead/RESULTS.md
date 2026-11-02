@@ -1,5 +1,73 @@
 # HY4 small-head 验证结果
 
+## 混合分发的实际执行计数
+
+2026-11-02，GPU7 H100；生产代码保持 `b9efac57c3`，性能实验提交为
+`833dbc24f5`。给原 demo 添加 `--audit-dir`：在 CUDA Graph capture 时包装
+真实函数并记录 Q/输出切片，随后移除包装，仅追踪一次 graph replay。
+每次 replay 仍轮换四组输入；下面计数已除以四，表示一次混合 batch 调用。
+这次只核验执行路径，不用 profiler 时间更新前面的性能结果。
+
+另核对本机 Triton 3.7.1 的 `do_bench_cudagraph` 源码：graph 内展开
+`n_repeat` 次 `run`，每次 `run` 包含四组完整输入；event 耗时先除以
+`n_repeat`，对 10 次 replay 求均值后返回。demo 再乘 1000 并除以 4，
+得到每个混合 batch 的 µs。因此没有把拆批后的两段再除以 2，也没有漏除
+四组输入。前表是外层 12 轮返回值的中位数。
+
+以 **8 decode + 512 prefill** 为例：
+
+| 项目 | A 整批原生 | B 拆批全原生 | C Triton + 原生 |
+| --- | --- | --- | --- |
+| 原生 attention 调用的 Q shape | `[520,64,576]` | `[8,64,576]`、`[512,64,576]` | `[512,64,576]` |
+| Triton 调用的 Q shape | 无 | 无 | `[8,8,576]` |
+| 索引 remap kernel 次数 | 1 | 1 | 1 |
+| FlashMLA attention kernel 次数 | 1 | 2 | 1 |
+| Triton Split-KV 次数 | 0 | 0 | 1 |
+| Triton Merge 次数 | 0 | 0 | 1 |
+| 原生 sink padding fill 次数 | 1 | 2 | 1 |
+| 原生 attention grid | `(520,1,1)` | `(8,1,1)`、`(512,1,1)` | `(512,1,1)` |
+
+C 的 Split-KV grid 为 `(8,32,1)`，Merge 为 `(8,8,1)`。
+说明 splits 根据 **拆分后的 8 decode tokens** 选择，而不是整批 520 tokens；
+若误传 520 tokens，默认策略会变为 1 split。128 decode 的两组 C 则实际发射
+`(128,2,1)` 和 `(128,8,1)`。这些是 GPU trace 的实际 grid，不只是源码推断。
+
+四组形状 `8+128 / 8+512 / 128+128 / 128+512` 全部符合上述调用计数。
+每组单次 replay：A 的原生 attention 共 4 次；B 共 8 次；C 的原生、Split-KV、
+Merge 各 4 次。B/C 的 Q 共用输入 storage，prefill token 偏移恰为 `nd`；
+两段输出共用 storage，偏移分别为 0 和 `nd`，切片互不重叠。没有整批进入
+Triton、重复处理 prefill 或额外执行一次整批 FlashMLA 的现象。
+
+所有 GPU kernel 位于同一 stream，按 decode 后 prefill 顺序执行，**没有并行
+重叠**。原生 sink 的 8 个 FP32 值仍需复制到 padding buffer；trace 中表现为
+32-byte DtoD copy，部分捕获表现为 `memcpy32_post` kernel。这不是输出拼接。
+因此不能只按总 kernel 数解释性能，还必须区分 attention、辅助 fill/copy。
+
+本次四组 A/B/C 的 FP32 对照通过；复用现有 `hy4_smallhead_backend` 和
+`hy4_smallhead_metadata_phase` 用例，**26 passed**。demo 手工指定 metadata
+前缀用于隔离 Backend；实际 metadata builder 的识别由这些现有测试覆盖，
+仍未验证完整模型 Serving。调用计数、shape、storage 偏移、完整 kernel 名称、
+grid、stream 及 trace 路径保存在
+[h100_mixed_execution_audit.json](results/h100_mixed_execution_audit.json)。
+
+这证明当前拆分分发按设计执行，不等于证明全部实现无缺陷或性能最优。decode
+使用现有自适应 Split-KV 策略，prefill 保留本地 pad64 原生 kernel；没有针对
+混合形状重新搜索 splits/tile，也没有做多 stream overlap。前面的 A/B/C 只
+比较这套现有配置，不能推出所有分阶段实现都会出现同样的回退。
+
+```bash
+CUDA_VISIBLE_DEVICES=7 PYTHONPATH=/tmp/hy4-smallhead-bootstrap \
+TRITON_CACHE_DIR=/tmp/hy4-plain-production-cache \
+.venv/bin/python benchmarks/kernels/benchmark_hy4_smallhead_mixed.py \
+  --decodes 8 128 --prefills 128 512 \
+  --audit-dir /tmp/hy4-mixed-execution-traces --output execution-audit.json
+
+CUDA_VISIBLE_DEVICES=7 PYTHONPATH=/tmp/hy4-smallhead-bootstrap \
+.venv/bin/python -m pytest tests/kernels/attention/test_flashmla_sparse.py \
+  -k 'hy4_smallhead_backend or hy4_smallhead_metadata_phase' \
+  -q --confcutdir=tests/kernels/attention
+```
+
 ## 混合 batch A/B/C：区分拆批成本与 decode 收益
 
 2026-11-02，在物理 GPU7（H100 80GB，UUID 尾号 `754aa34b024c`）完成。
