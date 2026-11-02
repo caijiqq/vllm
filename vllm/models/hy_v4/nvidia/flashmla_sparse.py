@@ -16,19 +16,22 @@ The subclass intentionally keeps the inherited ``get_name()``
 (``"FLASHMLA_SPARSE"``). Several shared code paths key off that exact string —
 `_canonicalize_sparse_mla_kv_cache_dtype` promotes a quantized KV cache to
 ``fp8_ds_mla`` for it, and `FlashMLASparseImpl` asserts that layout — so a new
-name would silently change KV cache behaviour. Only``supports_sink`` and the
-two kernel wrappers differ from the parent.
+name would silently change KV cache behaviour. It also provides an opt-in
+small-head Triton path for HY4's SM90 FP8 decode; other calls stay native.
 """
 
 from typing import TYPE_CHECKING
 
 import torch
 
+from vllm.config import get_current_vllm_config
 from vllm.logger import init_logger
+from vllm.platforms import current_platform
 from vllm.v1.attention.backends.mla.flashmla_sparse import (
     FlashMLASparseBackend,
     FlashMLASparseImpl,
     FlashMLASparseMetadata,
+    _fp8_kv_pages,
 )
 from vllm.v1.attention.ops.flashmla import (
     flash_mla_sparse_fwd,
@@ -88,6 +91,55 @@ class HYV4FlashMLASparseImpl(FlashMLASparseImpl):
         )
         self._validate_sinks(sinks, num_heads)
         self.sinks = sinks
+        config = get_current_vllm_config().model_config.hf_text_config
+        self.smallhead_triton = getattr(
+            config, "hy4_smallhead_triton", False
+        ) and current_platform.is_device_capability_family(90)
+
+    def _forward_fp8_kv_mixed_batch(
+        self,
+        q: torch.Tensor,
+        kv_c_and_k_pe_cache: torch.Tensor,
+        topk_indices: torch.Tensor,
+        attn_metadata: FlashMLASparseMetadata,
+        kernel_metadata: FlashMLASparseMetadata.FP8KernelMetadata | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+        # Opt-in only. Keep prefill, context parallelism and other layouts native.
+        if (
+            self.smallhead_triton
+            and self.dcp_world_size == self.pcp_world_size == 1
+            and attn_metadata.num_decode_tokens
+            == attn_metadata.num_actual_tokens
+            == q.shape[0]
+            and 0 < q.shape[0] <= 8
+            and q.shape[1] == 8
+            and q.shape[2] == 576
+            and self.kv_cache_dtype == "fp8_ds_mla"
+            and kv_c_and_k_pe_cache.shape[-1] == 656
+        ):
+            from .smallhead_sparse_decode import smallhead_sparse_decode
+
+            pages, block_stride_rows = _fp8_kv_pages(
+                kv_c_and_k_pe_cache, attn_metadata.block_size
+            )
+            physical_topk = self._convert_logical_to_physical_topk(
+                topk_indices,
+                attn_metadata,
+                block_stride_rows=block_stride_rows,
+                return_valid_counts=False,
+            )
+            out, lse = smallhead_sparse_decode(
+                q,
+                pages.view(torch.uint8),
+                physical_topk,
+                self.softmax_scale,
+                self.sinks,
+                num_splits=32,
+            )
+            return out, lse if self.need_to_return_lse_for_decode else None
+        return super()._forward_fp8_kv_mixed_batch(
+            q, kv_c_and_k_pe_cache, topk_indices, attn_metadata, kernel_metadata
+        )
 
     @staticmethod
     def _validate_sinks(sinks: torch.Tensor | None, num_heads: int) -> None:

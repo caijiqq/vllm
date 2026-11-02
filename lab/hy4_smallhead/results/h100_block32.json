@@ -1,0 +1,205 @@
+{
+  "gpu": "NVIDIA H100 80GB HBM3",
+  "pool": 8,
+  "rounds": 3,
+  "results": [
+    {
+      "tokens": 1,
+      "heads": 8,
+      "topk": 2048,
+      "splits": 8,
+      "block_n": 32,
+      "triton_us": 30.779554317523907,
+      "flashmla_us": 18.762409210205075,
+      "max_abs_error": 0.06229400634765625,
+      "speedup": 0.6095737779907671
+    },
+    {
+      "tokens": 1,
+      "heads": 8,
+      "topk": 2048,
+      "splits": 16,
+      "block_n": 32,
+      "triton_us": 18.653164657891967,
+      "flashmla_us": 18.845023573401143,
+      "max_abs_error": 0.06229400634765625,
+      "speedup": 1.010285595984808
+    },
+    {
+      "tokens": 1,
+      "heads": 8,
+      "topk": 2048,
+      "splits": 32,
+      "block_n": 32,
+      "triton_us": 12.857554323898464,
+      "flashmla_us": 18.694799931353124,
+      "max_abs_error": 0.06229400634765625,
+      "speedup": 1.45399346255181
+    },
+    {
+      "tokens": 2,
+      "heads": 8,
+      "topk": 2048,
+      "splits": 8,
+      "block_n": 32,
+      "triton_us": 32.85891258110434,
+      "flashmla_us": 20.750384370819862,
+      "max_abs_error": 0.11413192749023438,
+      "speedup": 0.6314994240787036
+    },
+    {
+      "tokens": 2,
+      "heads": 8,
+      "topk": 2048,
+      "splits": 16,
+      "block_n": 32,
+      "triton_us": 19.628919375063195,
+      "flashmla_us": 20.440342378204083,
+      "max_abs_error": 0.11413192749023438,
+      "speedup": 1.041338139285025
+    },
+    {
+      "tokens": 2,
+      "heads": 8,
+      "topk": 2048,
+      "splits": 32,
+      "block_n": 32,
+      "triton_us": 13.829260987120788,
+      "flashmla_us": 20.776268340445853,
+      "max_abs_error": 0.11413192749023438,
+      "speedup": 1.5023411850998274
+    },
+    {
+      "tokens": 4,
+      "heads": 8,
+      "topk": 2048,
+      "splits": 8,
+      "block_n": 32,
+      "triton_us": 37.13363505698538,
+      "flashmla_us": 20.761964026461825,
+      "max_abs_error": 0.06341552734375,
+      "speedup": 0.559114775448201
+    },
+    {
+      "tokens": 4,
+      "heads": 8,
+      "topk": 2048,
+      "splits": 16,
+      "block_n": 32,
+      "triton_us": 22.425897675331193,
+      "flashmla_us": 20.730334407878374,
+      "max_abs_error": 0.06341552734375,
+      "speedup": 0.924392624455878
+    },
+    {
+      "tokens": 4,
+      "heads": 8,
+      "topk": 2048,
+      "splits": 32,
+      "block_n": 32,
+      "triton_us": 15.748760161861295,
+      "flashmla_us": 20.787348527572345,
+      "max_abs_error": 0.06341552734375,
+      "speedup": 1.3199355577153926
+    },
+    {
+      "tokens": 8,
+      "heads": 8,
+      "topk": 2048,
+      "splits": 8,
+      "block_n": 32,
+      "triton_us": 37.90554896644924,
+      "flashmla_us": 23.728195615409224,
+      "max_abs_error": 0.11788558959960938,
+      "speedup": 0.625982112445104
+    },
+    {
+      "tokens": 8,
+      "heads": 8,
+      "topk": 2048,
+      "splits": 16,
+      "block_n": 32,
+      "triton_us": 23.210723448119708,
+      "flashmla_us": 24.07836683334843,
+      "max_abs_error": 0.11788558959960938,
+      "speedup": 1.0373811435549636
+    },
+    {
+      "tokens": 8,
+      "heads": 8,
+      "topk": 2048,
+      "splits": 32,
+      "block_n": 32,
+      "triton_us": 19.84437068303426,
+      "flashmla_us": 23.851697671689227,
+      "max_abs_error": 0.11788558959960938,
+      "speedup": 1.201937720911502
+    },
+    {
+      "tokens": 16,
+      "heads": 8,
+      "topk": 2048,
+      "splits": 8,
+      "block_n": 32,
+      "triton_us": 37.85898101250857,
+      "flashmla_us": 32.10528918675014,
+      "max_abs_error": 0.06212615966796875,
+      "speedup": 0.8480230668686668
+    },
+    {
+      "tokens": 16,
+      "heads": 8,
+      "topk": 2048,
+      "splits": 16,
+      "block_n": 32,
+      "triton_us": 28.8446295065958,
+      "flashmla_us": 31.624879889725324,
+      "max_abs_error": 0.06212615966796875,
+      "speedup": 1.0963871067400528
+    },
+    {
+      "tokens": 16,
+      "heads": 8,
+      "topk": 2048,
+      "splits": 32,
+      "block_n": 32,
+      "triton_us": 32.93074852711446,
+      "flashmla_us": 32.02620184882569,
+      "max_abs_error": 0.06212615966796875,
+      "speedup": 0.9725318518786786
+    },
+    {
+      "tokens": 32,
+      "heads": 8,
+      "topk": 2048,
+      "splits": 8,
+      "block_n": 32,
+      "triton_us": 47.483091300490216,
+      "flashmla_us": 47.131562327958676,
+      "max_abs_error": 0.11623001098632812,
+      "speedup": 0.9925967546993321
+    },
+    {
+      "tokens": 32,
+      "heads": 8,
+      "topk": 2048,
+      "splits": 16,
+      "block_n": 32,
+      "triton_us": 51.97574332291383,
+      "flashmla_us": 47.219182209796216,
+      "max_abs_error": 0.11623001098632812,
+      "speedup": 0.9084849814736434
+    },
+    {
+      "tokens": 32,
+      "heads": 8,
+      "topk": 2048,
+      "splits": 32,
+      "block_n": 32,
+      "triton_us": 64.02746323616273,
+      "flashmla_us": 47.12050554780621,
+      "max_abs_error": 0.11623001098632812,
+      "speedup": 0.7359420968156135
+    }
+  ]
+}

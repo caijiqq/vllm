@@ -1,0 +1,90 @@
+{
+  "gpu": "NVIDIA H100 80GB HBM3",
+  "pool": 64,
+  "rounds": 3,
+  "torch": "2.13.0+cu129",
+  "triton": "3.7.1",
+  "cuda": "12.9",
+  "timing": "cuda_graph_events",
+  "flashmla_padding_timed": false,
+  "results": [
+    {
+      "tokens": 1,
+      "heads": 8,
+      "topk": 2048,
+      "splits": 32,
+      "block_n": 32,
+      "triton_us": 15.169710705154822,
+      "flashmla_us": 20.392671028772988,
+      "max_abs_error": 0.06229400634765625,
+      "accessed_kv_bytes": 80768032,
+      "speedup": 1.3443019069469369,
+      "estimated_kv_gbps": 88.5638510919967
+    },
+    {
+      "tokens": 2,
+      "heads": 8,
+      "topk": 2048,
+      "splits": 32,
+      "block_n": 32,
+      "triton_us": 15.384693081314499,
+      "flashmla_us": 21.39633234058108,
+      "max_abs_error": 0.06274223327636719,
+      "accessed_kv_bytes": 152084416,
+      "speedup": 1.3907545784301687,
+      "estimated_kv_gbps": 174.65255795472908
+    },
+    {
+      "tokens": 4,
+      "heads": 8,
+      "topk": 2048,
+      "splits": 32,
+      "block_n": 32,
+      "triton_us": 16.109109946659633,
+      "flashmla_us": 20.91456705873663,
+      "max_abs_error": 0.07613372802734375,
+      "accessed_kv_bytes": 270660352,
+      "speedup": 1.2983068045341295,
+      "estimated_kv_gbps": 333.59707754147746
+    },
+    {
+      "tokens": 8,
+      "heads": 8,
+      "topk": 2048,
+      "splits": 32,
+      "block_n": 32,
+      "triton_us": 19.763011251177108,
+      "flashmla_us": 23.872453245249663,
+      "max_abs_error": 0.11053085327148438,
+      "accessed_kv_bytes": 434656416,
+      "speedup": 1.2079360246191122,
+      "estimated_kv_gbps": 543.8393908397862
+    },
+    {
+      "tokens": 16,
+      "heads": 8,
+      "topk": 2048,
+      "splits": 32,
+      "block_n": 32,
+      "triton_us": 33.05718830653599,
+      "flashmla_us": 32.09630976552549,
+      "max_abs_error": 0.12015151977539062,
+      "accessed_kv_bytes": 594822752,
+      "speedup": 0.9709328412295574,
+      "estimated_kv_gbps": 650.2612321614146
+    },
+    {
+      "tokens": 32,
+      "heads": 8,
+      "topk": 2048,
+      "splits": 32,
+      "block_n": 32,
+      "triton_us": 63.65469953288203,
+      "flashmla_us": 47.10702819208945,
+      "max_abs_error": 0.12097930908203125,
+      "accessed_kv_bytes": 675205712,
+      "speedup": 0.7400400683339246,
+      "estimated_kv_gbps": 675.3879338915405
+    }
+  ]
+}
