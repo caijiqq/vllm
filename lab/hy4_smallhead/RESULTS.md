@@ -1,4 +1,54 @@
-# 普通 Triton 生产迁移验证
+# HY4 small-head 验证结果
+
+## 混合 batch：Triton decode + 原生 prefill
+
+实现基于 `d0665c674c`，新增 `hy4_smallhead_mixed` 实验选项，默认 false。
+需同时开启 `hy4_smallhead_triton`，并使用 BF16 KV。现有纯 decode 路径保留。
+metadata 识别真实单 token decode 前缀；混合路径转换一次物理索引，两段在同一
+stream 顺序调用，写同一输出缓冲区。Triton merge 支持 padded token stride，
+无需 `cat` 或输出复制。DCP/PCP、HiSparse、FP8 KV 继续沿用原有适用限制。
+
+已有测试扩展覆盖 0/1/2/4 decode tokens 的 ON/OFF 分发、共享 prefill 请求的
+真实页表、固定形状 CUDA Graph replay、短 prefill 和多 token decode 的路由。
+首轮相关回归 **34 passed**；加入默认关闭的实验开关后，阶段/开关测试
+**18 passed**（含此前阶段用例）。九组 benchmark 的双路径 FP32 对照全部通过。
+全量模型、动态混合形状的 serving 与 H200 仍未验证。
+
+2026-11-02，H100 GPU7；8 heads、TopK=2048、BF16。每个 decode 请求独立 16K
+上下文，另有一个共享 8K 前缀的 prefill 请求，逐 query 限制随机 TopK 以保持因果。
+轮换四组独立输入；先逐段校验 FP32，再做六轮 AB/BA 交替。计时包含 backend
+中的索引转换、sink 准备、attention 和 merge；Q 的 head padding 在计时外，
+双方共用同一 padded Q。CUDA Graph/event timing，不含 Python 分配与 metadata
+builder 时间。基线是本地需要 pad 到 64 heads 的 FlashMLA，不代表新版 small-head
+FlashMLA。采样时检查 GPU7 未出现其他计算任务。
+
+| Decode tokens | Prefill tokens | 整批原生 µs | 分阶段 µs | 延迟变化 |
+| --- | --- | --- | --- | --- |
+| 8 | 128 | 130.04 | 93.50 | -28.10% |
+| 8 | 512 | 267.03 | 279.43 | +4.64% |
+| 8 | 2048 | 1022.21 | 1035.46 | +1.30% |
+| 32 | 128 | 136.11 | 113.68 | -16.48% |
+| 32 | 512 | 312.38 | 300.66 | -3.75% |
+| 32 | 2048 | 1036.33 | 1065.17 | +2.78% |
+| 128 | 128 | 189.72 | 189.06 | -0.35% |
+| 128 | 512 | 378.99 | 376.28 | -0.72% |
+| 128 | 2048 | 1140.98 | 1130.54 | -0.91% |
+
+原始六轮样本：[h100_mixed_dispatch.json](results/h100_mixed_dispatch.json)。
+每个结果为独立方案样本的中位数，变化为中位数之比。该 demo 显示收益取决于
+混合比例，最高约降低 28.1%，也出现约 4.6% 回退。因此保留独立实验开关，不据
+九个形状拟合自动选择规则。分批也改变原生 kernel 的形状，不能把全部收益归因于
+替换 decode kernel；这些是 Attention 调用结果，不能直接当作 TTFT/TPOT 收益。
+
+```bash
+# Serving 的 HF override（其他模型与启动参数保持一致）
+# --hf-overrides '{"hy4_smallhead_triton":true,"hy4_smallhead_mixed":true}'
+.venv/bin/python benchmarks/kernels/benchmark_hy4_smallhead_mixed.py \
+  --decodes 8 32 128 --prefills 128 512 2048 --rounds 6 --rep 60 \
+  --output mixed.json
+```
+
+## 普通 Triton 生产迁移验证
 
 生产 Split-KV 已采用之前测量的 `tl_n64_w4_s2` 实现：64-key tile、4 warps、
 2 stages，使用 `tl.load` / `tl.dot`。公共 API、BF16 cache、Split-KV 策略、

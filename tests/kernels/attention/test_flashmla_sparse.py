@@ -70,8 +70,9 @@ def test_hy4_smallhead_unaligned_tail():
 
 
 @pytest.mark.parametrize("enabled", [False, True])
-def test_hy4_smallhead_backend(enabled):
-    """Real page-table remapping agrees with FP32 for OFF and ON."""
+@pytest.mark.parametrize("nd", [0, 1, 2, 4])
+def test_hy4_smallhead_backend(monkeypatch, enabled, nd):
+    """Mixed requests dispatch by phase and preserve outputs during graph replay."""
     from types import SimpleNamespace
 
     from benchmarks.kernels.benchmark_hy4_smallhead_decode import make_inputs, reference
@@ -80,16 +81,21 @@ def test_hy4_smallhead_backend(enabled):
 
     torch.manual_seed(7)
     q, kv, indices, sinks = make_inputs()
-    table = torch.stack([torch.randperm(32, device="cuda") for _ in range(4)])
-    physical = table.gather(1, (indices // 128).long()) * 128 + indices % 128
+    req_ids = torch.arange(4, device="cuda", dtype=torch.int32).clamp_max(nd)
+    table = torch.stack(
+        [torch.randperm(32, device="cuda") for _ in range(min(nd + 1, 4))]
+    )
+    physical = (
+        table[req_ids.long()].gather(1, (indices // 128).long()) * 128 + indices % 128
+    )
     expected, _ = reference(q, kv, physical.int(), 0.0625, sinks)
     metadata = SimpleNamespace(
-        num_decode_tokens=4,
+        num_decode_tokens=nd,
         num_actual_tokens=4,
         block_size=128,
         block_table=table.int(),
-        req_id_per_token=torch.arange(4, device="cuda", dtype=torch.int32),
-        use_smallhead_decode=enabled,
+        req_id_per_token=req_ids,
+        smallhead_decode_tokens=nd if enabled else 0,
     )
     impl = object.__new__(HYV4FlashMLASparseImpl)
     impl.dcp_world_size = impl.pcp_world_size = 1
@@ -106,23 +112,66 @@ def test_hy4_smallhead_backend(enabled):
         torch.cuda.Event(),
         has_indexer=False,
     )
-    out, _ = impl._forward_bf16_kv(q, kv.view(-1, 128, 576), indices, metadata, 8)
+    from vllm.models.hy_v4.nvidia import smallhead_sparse_decode as decode_module
+
+    calls = []
+    native = impl._bf16_flash_mla_kernel
+    decode = decode_module.smallhead_sparse_decode
+
+    def native_call(q, *args, **kwargs):
+        calls.append(("native", q.shape[0]))
+        return native(q, *args, **kwargs)
+
+    def decode_call(q, *args, **kwargs):
+        calls.append(("triton", q.shape[0]))
+        return decode(q, *args, **kwargs)
+
+    monkeypatch.setattr(impl, "_bf16_flash_mla_kernel", native_call)
+    monkeypatch.setattr(decode_module, "smallhead_sparse_decode", decode_call)
+    # forward_mqa supplies head-padded Q for BF16 cache.
+    padded_q = q.new_zeros((4, 64, 576))
+    padded_q[:, :8] = q
+
+    def run():
+        return impl._forward_bf16_kv(
+            padded_q, kv.view(-1, 128, 576), indices, metadata, 8
+        )[0]
+
+    out = run()
     torch.testing.assert_close(out.float(), expected, rtol=0.02, atol=0.01)
+    if enabled and nd:
+        assert calls == [("triton", nd)] + ([("native", 4 - nd)] if nd < 4 else [])
+    else:
+        assert calls == [("native", 4)]
+    torch.accelerator.synchronize()
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        captured = run()
+    padded_q.mul_(0.5)
+    graph.replay()
+    expected, _ = reference(padded_q[:, :8], kv, physical.int(), 0.0625, sinks)
+    torch.testing.assert_close(captured.float(), expected, rtol=0.02, atol=0.01)
 
 
 @pytest.mark.parametrize(
-    "prefill,query_len,enabled,expected",
+    "lengths,phases,parent_decodes,enabled,expected",
     [
-        (False, 1, True, True),
-        (True, 1, True, False),
-        (False, 2, True, False),
-        (False, 1, False, False),
+        ([1, 1], [False, False], 2, True, 2),
+        ([1], [True], 1, True, 0),
+        ([2], [False], 1, True, 0),
+        ([1], [False], 1, False, 0),
+        ([1, 1, 300], [False, False, True], 2, True, 2),
+        ([1, 1, 2], [False, True, True], 3, True, 1),
+        ([1, 1, 1], [False, True, False], 3, True, 1),
+        ([1, 300], [False, True], 1, True, 1),
+        ([300], [True], 0, True, 0),
     ],
 )
+@pytest.mark.parametrize("mixed", [False, True])
 def test_hy4_smallhead_metadata_phase(
-    monkeypatch, prefill, query_len, enabled, expected
+    monkeypatch, lengths, phases, parent_decodes, enabled, expected, mixed
 ):
-    """A one-token prompt must remain prefill even if the parent calls it decode."""
+    """Only the true single-token decode prefix uses Triton, even for short prompts."""
     from types import SimpleNamespace
 
     from vllm.models.hy_v4.nvidia.flashmla_sparse import (
@@ -135,15 +184,21 @@ def test_hy4_smallhead_metadata_phase(
     monkeypatch.setattr(
         FlashMLASparseMetadataBuilder,
         "build",
-        lambda *a: SimpleNamespace(num_actual_tokens=4, num_decode_tokens=4),
+        lambda *a: SimpleNamespace(
+            num_decodes=parent_decodes, num_actual_tokens=sum(lengths)
+        ),
     )
     builder = object.__new__(HYV4FlashMLASparseMetadataBuilder)
     builder.smallhead_enabled = enabled
+    builder.smallhead_mixed = mixed
     builder.num_heads = 8
     common = SimpleNamespace(
-        max_query_len=query_len, num_reqs=4, is_prefilling=torch.full((4,), prefill)
+        is_prefilling=torch.tensor(phases),
+        query_start_loc_cpu=torch.tensor([0] + lengths).cumsum(0),
     )
-    assert builder.build(0, common).use_smallhead_decode is expected
+    if not mixed and expected != sum(lengths):
+        expected = 0
+    assert builder.build(0, common).smallhead_decode_tokens == expected
 
 
 @pytest.mark.parametrize("sm120", [False, True])

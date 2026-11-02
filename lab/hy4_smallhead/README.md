@@ -52,8 +52,15 @@ max 和 denominator，第二个 kernel 合并后只加一次 sink。返回的自
 
 HF override `hy4_smallhead_triton` 默认 false。开启后在 metadata 构造时选择路径：
 SM90、BF16 cache/Q、8/16/32 heads、512+64 维、PCP=DCP=1、无 HiSparse、
-单 token 纯 Decode、`T*heads <= 4096` 才进入 Triton。混合 batch、prefill、
-其他配置使用 FlashMLA。没有新增 Scheduler 路由或环境变量注册框架。
+单 token 纯 Decode、`T*heads <= 4096` 才进入 Triton。
+
+实验选项 `hy4_smallhead_mixed` 默认 false；与 `hy4_smallhead_triton=true` 一起
+开启后，混合 batch 中连续的单 token decode 前缀使用 Triton，其余 token 使用
+原生 FlashMLA。依据 CPU 上的真实阶段与 query 长度识别前缀，短 prefill 不会
+误入 Triton；遇到短 prefill 或多 token decode 后的请求也保留原生路径。
+`T*heads` 的限制只计算选中的 decode 前缀。两段共用 BF16 cache，一次索引转换，
+同一 stream 顺序执行，直接写入 head-padded 输出的不同切片，无输出拼接。
+没有修改 Scheduler。混合路径并非所有比例都更快，实测见 [RESULTS](RESULTS.md)。
 
 ## 本地验证
 
