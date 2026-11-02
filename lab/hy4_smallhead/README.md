@@ -60,7 +60,8 @@ SM90、BF16 cache/Q、8/16/32 heads、512+64 维、PCP=DCP=1、无 HiSparse、
 中残留该字段也不会开启混合分发。关闭 `hy4_smallhead_triton` 可恢复全部原生路径。
 
 混合分发实验已停止，demo 保留在历史提交 `f775dcc1d3` 中；历史结果和执行
-计数仍保存在 [RESULTS](RESULTS.md)，不代表当前生产路径。
+计数仍保存在 [RESULTS](RESULTS.md)，不代表当前生产路径。调用效果与不采用混合
+加速的原因见 [混合批次实验说明](MIXED_BATCH_DECISION.md)。
 
 ## 本地验证
 
