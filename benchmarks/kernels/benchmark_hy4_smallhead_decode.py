@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
-"""HY4 small-head correctness/benchmark demo; run from the repository root."""
+"""BF16 HY4 sparse decode demo: Triton vs native FlashMLA, same cache."""
 
 import argparse
 import json
@@ -8,110 +8,103 @@ import statistics
 
 import torch
 
-from vllm import _custom_ops as ops
 from vllm.models.hy_v4.nvidia.smallhead_sparse_decode import smallhead_sparse_decode
 from vllm.triton_utils import triton
-from vllm.v1.attention.ops.flashmla import flash_mla_with_kvcache, get_mla_metadata
+from vllm.v1.attention.ops.flashmla import flash_mla_sparse_fwd
 
 
-def make_inputs(tokens=4, heads=8, topk=2048, page_size=64, rows=4096):
-    """Use the production cache writer, including its per-128 FP32 scales."""
-    kv = torch.randn(rows, 512, device="cuda", dtype=torch.bfloat16)
-    kv *= torch.tensor([0.125, 1.0, 4.0, 16.0], device="cuda").repeat_interleave(128)
-    rope = torch.randn(rows, 64, device="cuda", dtype=torch.bfloat16)
-    cache = torch.empty(
-        rows // page_size, page_size, 656, dtype=torch.uint8, device="cuda"
+def make_inputs(tokens=4, heads=8, topk=2048, rows=4096, independent_requests=False):
+    rows_per_request = rows
+    if independent_requests:
+        rows *= tokens
+    kv = torch.randn(rows, 576, device="cuda", dtype=torch.bfloat16)
+    q = torch.randn(tokens, heads, 576, device="cuda", dtype=torch.bfloat16)
+    indices = torch.randint(
+        rows_per_request, (tokens, topk), device="cuda", dtype=torch.int32
     )
-    ops.concat_and_cache_mla(
-        kv,
-        rope,
-        cache,
-        torch.arange(rows, device="cuda"),
-        "fp8_ds_mla",
-        torch.ones(1, device="cuda"),
-    )
-    q = torch.randn(tokens, heads, 576, device="cuda", dtype=torch.bfloat16) * 0.25
-    indices = torch.randint(rows, (tokens, topk), device="cuda", dtype=torch.int32)
+    if independent_requests:
+        indices += (
+            torch.arange(tokens, device="cuda", dtype=torch.int32)[:, None]
+            * rows_per_request
+        )
     sinks = torch.linspace(-2, 8, heads, device="cuda")
-    return q, cache, indices, sinks
+    return q, kv, indices, sinks
 
 
-def reference(q, cache, indices, scale, sinks):
-    rows = cache.reshape(-1, 656)
-    latent = rows[:, :512].contiguous().view(torch.float8_e4m3fn).float()
-    scales = rows[:, 512:528].contiguous().view(torch.float32)
-    latent = (latent * scales.repeat_interleave(128, dim=-1)).bfloat16().float()
-    rope = rows[:, 528:].contiguous().view(torch.bfloat16).float()
-    keys = torch.cat((latent, rope), dim=-1)[indices.clamp_min(0).long()]
-    values = latent[indices.clamp_min(0).long()]
+def reference(q, kv, indices, scale, sinks, lengths=None):
+    valid = (indices >= 0) & (indices < kv.shape[0])
+    if lengths is not None:
+        valid &= (
+            torch.arange(indices.shape[1], device=q.device)[None, :] < lengths[:, None]
+        )
+    keys = kv[indices.clamp(0, kv.shape[0] - 1).long()].float()
     scores = torch.einsum("thd,tkd->thk", q.float(), keys) * scale
-    scores.masked_fill_(indices[:, None, :] < 0, float("-inf"))
+    scores.masked_fill_(~valid[:, None, :], -float("inf"))
     lse = torch.logsumexp(scores, dim=-1)
-    maximum = torch.where(torch.isneginf(lse), 0.0, lse)
-    weights = torch.exp(scores - maximum[:, :, None])
-    output = torch.einsum("thk,tkd->thd", weights, values)
+    safe_lse = torch.where(torch.isneginf(lse), 0.0, lse)
+    weights = torch.exp(scores - safe_lse[:, :, None])
+    out = torch.einsum("thk,tkd->thd", weights, keys[..., :512])
     if sinks is not None:
-        factor = torch.sigmoid(lse - sinks[None, :])
-        factor = torch.where(torch.isneginf(lse), 0.0, factor)
-        output *= factor[:, :, None]
-    return output, lse
+        factor = torch.where(
+            torch.isneginf(lse), 0.0, torch.sigmoid(lse - sinks[None, :])
+        )
+        out *= factor[:, :, None]
+    return out, lse
 
 
-def flashmla_call(q, cache, indices, scale, sinks):
-    """Return a callable with the same 64-head padding as HY4's backend."""
-    tokens, heads, dim = q.shape
-    indices = indices.contiguous()
-    padded = q.new_zeros((tokens, 1, 64, dim))
-    padded[:, 0, :heads] = q
-    padded_sinks = sinks.new_full((64,), float("-inf"))
-    padded_sinks[:heads] = sinks
-    lens = torch.full((tokens,), 1, dtype=torch.int32, device=q.device)
-    table = torch.zeros((tokens, 1), dtype=torch.int32, device=q.device)
-    metadata, splits = get_mla_metadata(
-        lens,
-        64,
-        1,
-        num_heads_q=64,
-        topk=indices.shape[-1],
-        is_fp8_kvcache=True,
-    )
-    # The native SM90 kernel reads 64-row pages even for larger cache blocks.
-    pages = cache.view(-1, 64, 1, 656)
+def flashmla_call(q, kv, indices, scale, sinks, lengths=None):
+    # Installed 0.32.0 FlashMLA requires 64 heads, exactly as the HY4 baseline.
+    t, h, d = q.shape
+    padded = q.new_zeros((t, 64, d))
+    padded[:, :h] = q
+    padded_sinks = None
+    if sinks is not None:
+        padded_sinks = sinks.new_full((64,), -float("inf"))
+        padded_sinks[:h] = sinks
+    indices = indices.contiguous().view(t, 1, -1)
 
     def run():
-        out, lse = flash_mla_with_kvcache(
+        out, _, lse = flash_mla_sparse_fwd(
             padded,
-            pages,
-            table,
-            lens,
+            kv.view(-1, 1, 576),
+            indices,
+            scale,
             512,
-            metadata,
-            splits,
-            softmax_scale=scale,
-            is_fp8_kvcache=True,
-            indices=indices[:, None, :],
             attn_sink=padded_sinks,
+            topk_length=lengths,
         )
-        return out[:, 0, :heads], lse[:, :heads, 0]
+        return out[:, :h], lse[:, :h]
 
     return run
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--tokens", type=int, nargs="+", default=[1, 2, 4, 8, 16, 32])
+    parser.add_argument(
+        "--tokens", type=int, nargs="+", default=[1, 8, 16, 32, 64, 128]
+    )
     parser.add_argument("--heads", type=int, nargs="+", default=[8])
     parser.add_argument("--topk", type=int, default=2048)
-    parser.add_argument("--splits", type=int, nargs="+", default=[4, 8, 16, 32])
-    parser.add_argument("--block-n", type=int, choices=[32, 64], default=32)
+    parser.add_argument(
+        "--splits",
+        type=int,
+        nargs="+",
+        default=[0],
+        help="0 selects the reference split heuristic",
+    )
     parser.add_argument("--rounds", type=int, default=3)
     parser.add_argument(
         "--pool",
         type=int,
-        default=64,
-        help="Rotate caches (> H100/H200 L2 at default settings)",
+        default=4,
+        help="Rotating input sets; use 64 for small token counts",
     )
     parser.add_argument("--output")
+    parser.add_argument(
+        "--independent-requests",
+        action="store_true",
+        help="Use a separate 16K KV region per decode token",
+    )
     args = parser.parse_args()
     torch.manual_seed(42)
     print(
@@ -121,15 +114,21 @@ def main():
     for heads in args.heads:
         for tokens in args.tokens:
             inputs = [
-                make_inputs(tokens, heads, args.topk, rows=16384)
+                make_inputs(
+                    tokens,
+                    heads,
+                    args.topk,
+                    rows=16384,
+                    independent_requests=args.independent_requests,
+                )
                 for _ in range(args.pool)
             ]
-            accessed_kv_bytes = sum(torch.unique(x[2]).numel() * 656 for x in inputs)
+            accessed_kv_bytes = sum(torch.unique(x[2]).numel() * 1152 for x in inputs)
             scale = 256**-0.5  # HY4 pre-absorption QK dimension: 192 + 64.
             ref, ref_lse = reference(*inputs[0][:3], scale, inputs[0][3])
             native = [flashmla_call(*x[:3], scale, x[3]) for x in inputs]
             native_out, native_lse = native[0]()
-            torch.testing.assert_close(native_out.float(), ref, rtol=0.02, atol=0.04)
+            torch.testing.assert_close(native_out.float(), ref, rtol=0.02, atol=0.01)
             torch.testing.assert_close(native_lse, ref_lse, rtol=1e-4, atol=1e-4)
             for splits in args.splits:
 
@@ -141,8 +140,7 @@ def main():
                             indices,
                             scale,
                             sinks,
-                            num_splits=splits,
-                            block_n=args.block_n,
+                            num_splits=splits or None,
                         )
 
                 def baseline(native=native):
@@ -153,10 +151,9 @@ def main():
                     *inputs[0][:3],
                     scale,
                     inputs[0][3],
-                    num_splits=splits,
-                    block_n=args.block_n,
+                    num_splits=splits or None,
                 )
-                torch.testing.assert_close(out.float(), ref, rtol=0.02, atol=0.04)
+                torch.testing.assert_close(out.float(), ref, rtol=0.02, atol=0.01)
                 torch.testing.assert_close(lse, ref_lse, rtol=1e-4, atol=1e-4)
                 timings = {"triton": [], "flashmla": []}
                 functions = {"triton": candidate, "flashmla": baseline}
@@ -174,7 +171,6 @@ def main():
                     heads=heads,
                     topk=args.topk,
                     splits=splits,
-                    block_n=args.block_n,
                     triton_us=statistics.median(timings["triton"]),
                     flashmla_us=statistics.median(timings["flashmla"]),
                     max_abs_error=(out.float() - ref).abs().max().item(),
@@ -182,7 +178,7 @@ def main():
                 )
                 row["speedup"] = row["flashmla_us"] / row["triton_us"]
                 row["estimated_kv_gbps"] = (
-                    tokens * args.topk * 656 / (row["triton_us"] * 1000)
+                    tokens * args.topk * 1152 / (row["triton_us"] * 1000)
                 )
                 results.append(row)
                 print(json.dumps(row), flush=True)
@@ -198,6 +194,7 @@ def main():
                     cuda=torch.version.cuda,
                     timing="cuda_graph_events",
                     flashmla_padding_timed=False,
+                    independent_requests=args.independent_requests,
                     results=results,
                 ),
                 f,

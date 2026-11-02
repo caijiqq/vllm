@@ -16,23 +16,24 @@ The subclass intentionally keeps the inherited ``get_name()``
 (``"FLASHMLA_SPARSE"``). Several shared code paths key off that exact string —
 `_canonicalize_sparse_mla_kv_cache_dtype` promotes a quantized KV cache to
 ``fp8_ds_mla`` for it, and `FlashMLASparseImpl` asserts that layout — so a new
-name would silently change KV cache behaviour. It also provides an opt-in
-small-head Triton path for HY4's SM90 FP8 decode; other calls stay native.
+name would silently change KV cache behaviour. An opt-in BF16 Triton decode
+path uses an explicit per-graph metadata flag.
 """
 
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, cast
 
 import torch
 
-from vllm.config import get_current_vllm_config
 from vllm.logger import init_logger
 from vllm.platforms import current_platform
 from vllm.v1.attention.backends.mla.flashmla_sparse import (
     FlashMLASparseBackend,
     FlashMLASparseImpl,
     FlashMLASparseMetadata,
-    _fp8_kv_pages,
+    FlashMLASparseMetadataBuilder,
 )
+from vllm.v1.attention.backends.mla.sparse_utils import flat_kv_row_view
 from vllm.v1.attention.ops.flashmla import (
     flash_mla_sparse_fwd,
     flash_mla_with_kvcache,
@@ -43,6 +44,51 @@ if TYPE_CHECKING:
     from vllm.model_executor.models.deepseek_v2 import Indexer
 
 logger = init_logger(__name__)
+
+
+@dataclass
+class HYV4FlashMLASparseMetadata(FlashMLASparseMetadata):
+    use_smallhead_decode: bool = False
+
+
+class HYV4FlashMLASparseMetadataBuilder(FlashMLASparseMetadataBuilder):
+    metadata_cls = HYV4FlashMLASparseMetadata
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        config = self.model_config.hf_text_config
+        self.smallhead_enabled = (
+            getattr(config, "hy4_smallhead_triton", False)
+            and current_platform.is_device_capability_family(90)
+            and self.vllm_config.cache_config.cache_dtype in ("auto", "bfloat16")
+            and self.model_config.dtype == torch.bfloat16
+            and self.num_heads in (8, 16, 32)
+            and self.mla_dims.kv_lora_rank == 512
+            and self.mla_dims.qk_rope_head_dim == 64
+            and self.dcp_world_size == self.pcp_world_size == 1
+            and not self.use_hisparse
+        )
+
+    def build(
+        self, common_prefix_len, common_attn_metadata, fast_build=False
+    ) -> HYV4FlashMLASparseMetadata:
+        metadata = cast(
+            HYV4FlashMLASparseMetadata,
+            super().build(common_prefix_len, common_attn_metadata, fast_build),
+        )
+        phases = common_attn_metadata.is_prefilling
+        # Decide before graph capture, using the host's true prefill/decode phase.
+        # Keep short prompt extensions and missing phase metadata on FlashMLA.
+        metadata.use_smallhead_decode = bool(
+            self.smallhead_enabled
+            and common_attn_metadata.max_query_len == 1
+            and 0 < metadata.num_actual_tokens * self.num_heads <= 4096
+            and metadata.num_decode_tokens == metadata.num_actual_tokens
+            and phases is not None
+            and phases.device.type == "cpu"
+            and not phases[: common_attn_metadata.num_reqs].any().item()
+        )
+        return metadata
 
 
 class HYV4FlashMLASparseImpl(FlashMLASparseImpl):
@@ -91,55 +137,6 @@ class HYV4FlashMLASparseImpl(FlashMLASparseImpl):
         )
         self._validate_sinks(sinks, num_heads)
         self.sinks = sinks
-        config = get_current_vllm_config().model_config.hf_text_config
-        self.smallhead_triton = getattr(
-            config, "hy4_smallhead_triton", False
-        ) and current_platform.is_device_capability_family(90)
-
-    def _forward_fp8_kv_mixed_batch(
-        self,
-        q: torch.Tensor,
-        kv_c_and_k_pe_cache: torch.Tensor,
-        topk_indices: torch.Tensor,
-        attn_metadata: FlashMLASparseMetadata,
-        kernel_metadata: FlashMLASparseMetadata.FP8KernelMetadata | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor | None]:
-        # Opt-in only. Keep prefill, context parallelism and other layouts native.
-        if (
-            self.smallhead_triton
-            and self.dcp_world_size == self.pcp_world_size == 1
-            and attn_metadata.num_decode_tokens
-            == attn_metadata.num_actual_tokens
-            == q.shape[0]
-            and 0 < q.shape[0] <= 8
-            and q.shape[1] == 8
-            and q.shape[2] == 576
-            and self.kv_cache_dtype == "fp8_ds_mla"
-            and kv_c_and_k_pe_cache.shape[-1] == 656
-        ):
-            from .smallhead_sparse_decode import smallhead_sparse_decode
-
-            pages, block_stride_rows = _fp8_kv_pages(
-                kv_c_and_k_pe_cache, attn_metadata.block_size
-            )
-            physical_topk = self._convert_logical_to_physical_topk(
-                topk_indices,
-                attn_metadata,
-                block_stride_rows=block_stride_rows,
-                return_valid_counts=False,
-            )
-            out, lse = smallhead_sparse_decode(
-                q,
-                pages.view(torch.uint8),
-                physical_topk,
-                self.softmax_scale,
-                self.sinks,
-                num_splits=32,
-            )
-            return out, lse if self.need_to_return_lse_for_decode else None
-        return super()._forward_fp8_kv_mixed_batch(
-            q, kv_c_and_k_pe_cache, topk_indices, attn_metadata, kernel_metadata
-        )
 
     @staticmethod
     def _validate_sinks(sinks: torch.Tensor | None, num_heads: int) -> None:
@@ -266,6 +263,29 @@ class HYV4FlashMLASparseImpl(FlashMLASparseImpl):
 
         return out, lse
 
+    def _forward_bf16_kv(
+        self, q, kv_c_and_k_pe_cache, topk_indices, attn_metadata, actual_num_heads
+    ):
+        if not getattr(attn_metadata, "use_smallhead_decode", False):
+            return super()._forward_bf16_kv(
+                q, kv_c_and_k_pe_cache, topk_indices, attn_metadata, actual_num_heads
+            )
+        from .smallhead_sparse_decode import smallhead_sparse_decode
+
+        rows, block_stride = flat_kv_row_view(
+            kv_c_and_k_pe_cache, attn_metadata.block_size
+        )
+        physical, _ = self._convert_logical_to_physical_topk(
+            topk_indices,
+            attn_metadata,
+            block_stride_rows=block_stride,
+            return_valid_counts=True,
+        )
+        # Mask -1 slots directly; a valid count need not describe a compact prefix.
+        return smallhead_sparse_decode(
+            q[:, :actual_num_heads], rows, physical, self.softmax_scale, self.sinks
+        )
+
     def _bf16_flash_mla_kernel(
         self,
         q: torch.Tensor,
@@ -334,9 +354,13 @@ class HYV4FlashMLASparseImpl(FlashMLASparseImpl):
 class HYV4FlashMLASparseBackend(FlashMLASparseBackend):
     """``FLASHMLA_SPARSE`` with attention-sink support for HY V4.
 
-    Keeps the parent's name, metadata and builder; only the impl class and the
-    sink capability differ. See the module docstring for why the name is reused.
+    Keeps the parent's name; the builder selects the optional BF16 decode kernel.
+    See the module docstring for why the name is reused.
     """
+
+    @staticmethod
+    def get_builder_cls() -> type[HYV4FlashMLASparseMetadataBuilder]:
+        return HYV4FlashMLASparseMetadataBuilder
 
     @staticmethod
     def get_impl_cls() -> type[HYV4FlashMLASparseImpl]:

@@ -1,0 +1,81 @@
+{
+  "gpu": "NVIDIA H100 80GB HBM3",
+  "sm_count": 132,
+  "tokens": 128,
+  "heads": 8,
+  "topk": 2048,
+  "kv_dtype": "bfloat16",
+  "bytes_per_row": 1152,
+  "num_splits": 2,
+  "independent_requests": true,
+  "nsight_compute": "2025.2.1",
+  "sections": [
+    "SpeedOfLight",
+    "Occupancy",
+    "LaunchStats"
+  ],
+  "note": "Profiler replay with default clock/cache controls; use benchmark JSON for steady-state timing.",
+  "units": {
+    "Grid Size": "",
+    "Block Size": "",
+    "launch__registers_per_thread": "register/thread",
+    "launch__shared_mem_per_block": "Kbyte/block",
+    "launch__waves_per_multiprocessor": "",
+    "launch__occupancy_limit_registers": "block",
+    "launch__occupancy_limit_shared_mem": "block",
+    "sm__throughput.avg.pct_of_peak_sustained_elapsed": "%",
+    "sm__warps_active.avg.pct_of_peak_sustained_active": "%",
+    "sm__pipe_tensor_cycles_active.avg.pct_of_peak_sustained_elapsed": "%",
+    "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": "%"
+  },
+  "kernels": [
+    {
+      "kernel": "triton_split_kv",
+      "metrics": {
+        "Grid Size": "(128, 2, 1)",
+        "Block Size": "(128, 1, 1)",
+        "launch__registers_per_thread": "196",
+        "launch__shared_mem_per_block": "95.232000",
+        "launch__waves_per_multiprocessor": "0.97",
+        "launch__occupancy_limit_registers": "2.000000",
+        "launch__occupancy_limit_shared_mem": "2.000000",
+        "sm__throughput.avg.pct_of_peak_sustained_elapsed": "16.085161",
+        "sm__warps_active.avg.pct_of_peak_sustained_active": "11.983416",
+        "sm__pipe_tensor_cycles_active.avg.pct_of_peak_sustained_elapsed": "16.085161",
+        "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": "82.036351"
+      }
+    },
+    {
+      "kernel": "triton_softmax_merge",
+      "metrics": {
+        "Grid Size": "(128, 8, 1)",
+        "Block Size": "(128, 1, 1)",
+        "launch__registers_per_thread": "29",
+        "launch__shared_mem_per_block": "2.048000",
+        "launch__waves_per_multiprocessor": "0.48",
+        "launch__occupancy_limit_registers": "16.000000",
+        "launch__occupancy_limit_shared_mem": "32.000000",
+        "sm__throughput.avg.pct_of_peak_sustained_elapsed": "14.689517",
+        "sm__warps_active.avg.pct_of_peak_sustained_active": "41.592788",
+        "sm__pipe_tensor_cycles_active.avg.pct_of_peak_sustained_elapsed": "0.190995",
+        "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": "24.636489"
+      }
+    },
+    {
+      "kernel": "native_flashmla_bf16_padded64",
+      "metrics": {
+        "Grid Size": "(128, 1, 1)",
+        "Block Size": "(384, 1, 1)",
+        "launch__registers_per_thread": "168",
+        "launch__shared_mem_per_block": "231.888000",
+        "launch__waves_per_multiprocessor": "0.97",
+        "launch__occupancy_limit_registers": "1.000000",
+        "launch__occupancy_limit_shared_mem": "1.000000",
+        "sm__throughput.avg.pct_of_peak_sustained_elapsed": "39.326824",
+        "sm__warps_active.avg.pct_of_peak_sustained_active": "18.399505",
+        "sm__pipe_tensor_cycles_active.avg.pct_of_peak_sustained_elapsed": "39.326824",
+        "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": "80.941152"
+      }
+    }
+  ]
+}

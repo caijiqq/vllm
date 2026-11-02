@@ -1,0 +1,49 @@
+{
+  "gpu": "NVIDIA H100 80GB HBM3",
+  "pool": 64,
+  "rounds": 3,
+  "torch": "2.13.0+cu129",
+  "triton": "3.7.1",
+  "cuda": "12.9",
+  "timing": "cuda_graph_events",
+  "flashmla_padding_timed": false,
+  "independent_requests": true,
+  "results": [
+    {
+      "tokens": 1,
+      "heads": 8,
+      "topk": 2048,
+      "splits": 0,
+      "triton_us": 8.49619302256354,
+      "flashmla_us": 59.28991222381592,
+      "max_abs_error": 0.0008863508701324463,
+      "accessed_kv_bytes": 141836544,
+      "speedup": 6.978409278880353,
+      "estimated_kv_gbps": 277.6886063833957
+    },
+    {
+      "tokens": 2,
+      "heads": 8,
+      "topk": 2048,
+      "splits": 0,
+      "triton_us": 8.613133962665286,
+      "flashmla_us": 60.119762519995376,
+      "max_abs_error": 0.0008999407291412354,
+      "accessed_kv_bytes": 283895424,
+      "speedup": 6.980010154328501,
+      "estimated_kv_gbps": 547.8368292486024
+    },
+    {
+      "tokens": 4,
+      "heads": 8,
+      "topk": 2048,
+      "splits": 0,
+      "triton_us": 10.829659125634603,
+      "flashmla_us": 60.090937713782,
+      "max_abs_error": 0.0010245442390441895,
+      "accessed_kv_bytes": 567925632,
+      "speedup": 5.54873768570816,
+      "estimated_kv_gbps": 871.4202257448242
+    }
+  ]
+}

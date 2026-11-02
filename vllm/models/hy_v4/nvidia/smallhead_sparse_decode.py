@@ -1,99 +1,117 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
-"""Split-KV sparse MLA for HY4's 656-byte cache and small SM90 head groups.
+"""Triton BF16 sparse decode adapted from minatoyukinaa/vllm add_decode_kernel.
 
-Physical indices address cache rows, with -1 denoting padding. Unlike DSv4's
-page-separated scales, each HY4 row contains 512 FP8 bytes, four FP32 scales,
-then 64 BF16 RoPE values. V is the dequantized 512-dimensional latent.
-
-The 16-head MMA tile and Split-KV approach follow vllm-project/vllm#59418;
-the cache loader and query geometry here are specific to HY4.
+Reference: c1252328ad, vllm/models/hy_v4/nvidia/sparse_mla_decode.py (TileLang).
+Gluon supplies explicit shared-memory copies and MMA layouts in Triton.
 """
 
 import torch
 
-from vllm.triton_utils import tl, triton
+from vllm import envs
+from vllm.triton_utils import gl, gluon, tl, triton
+
+async_copy = gl.nvidia.ampere.async_copy
+mma_v2 = gl.nvidia.ampere.mma_v2
 
 
-@triton.jit
+@gluon.jit
+def _copy_shared(dst, src, mask, ALIGNED: gl.constexpr):
+    if ALIGNED:
+        async_copy.async_copy_global_to_shared(dst, src, mask)
+    else:
+        dst.store(gl.load(src, mask, other=0))
+
+
+@gluon.jit
 def _split_kv(
     Q,
-    Cache,
+    KV,
     Indices,
+    Lengths,
     Partial,
-    PartialLSE,
-    Q_T: tl.constexpr,
-    Q_H: tl.constexpr,
-    C_PAGE: tl.constexpr,
-    C_ROW: tl.constexpr,
-    PAGE_SIZE: tl.constexpr,
-    I_T: tl.constexpr,
-    I_K: tl.constexpr,
-    HEADS: tl.constexpr,
-    TOPK: tl.constexpr,
-    SCALE: tl.constexpr,
-    SPLITS: tl.constexpr,
-    BLOCK_N: tl.constexpr,
+    QT: gl.constexpr,
+    QH: gl.constexpr,
+    KR: gl.constexpr,
+    IT: gl.constexpr,
+    IK: gl.constexpr,
+    ROWS: gl.constexpr,
+    HEADS: gl.constexpr,
+    TOPK: gl.constexpr,
+    SCALE: gl.constexpr,
+    SPLITS: gl.constexpr,
+    HAS_LENGTHS: gl.constexpr,
+    ALIGNED_Q: gl.constexpr,
+    ALIGNED_KV: gl.constexpr,
 ):
-    token = tl.program_id(0)
-    split = tl.program_id(1)
-    h = tl.arange(0, 16)
-    d = tl.arange(0, 512)
-    r = tl.arange(0, 64)
-    q_base = Q + token * Q_T + h[:, None] * Q_H
-    q = tl.load(q_base + d[None, :], h[:, None] < HEADS, other=0)
-    q_rope = tl.load(q_base + 512 + r[None, :], h[:, None] < HEADS, other=0)
-    m = tl.full((16,), float("-inf"), tl.float32)
-    denom = tl.zeros((16,), tl.float32)
-    acc = tl.zeros((16, 512), tl.float32)
-    blocks_per_split = tl.cdiv(tl.cdiv(TOPK, BLOCK_N), SPLITS)
+    token = gl.program_id(0)
+    split = gl.program_id(1)
+    BH: gl.constexpr = max(16, HEADS)
+    COPY: gl.constexpr = gl.BlockedLayout([1, 8], [4, 8], [4, 1], [1, 0])
+    MMA: gl.constexpr = gl.NVMMADistributedLayout(
+        version=[2, 0], warps_per_cta=[1, 4], instr_shape=[16, 8]
+    )
+    A: gl.constexpr = gl.DotOperandLayout(0, MMA, 2)
+    B: gl.constexpr = gl.DotOperandLayout(1, MMA, 2)
+    SH: gl.constexpr = gl.SwizzledSharedLayout(8, 1, 8, [1, 0])
+    h = gl.arange(0, BH, layout=gl.SliceLayout(1, COPY))
+    d = gl.arange(0, 512, layout=gl.SliceLayout(0, COPY))
+    r = gl.arange(0, 64, layout=gl.SliceLayout(0, COPY))
+    qs = gl.allocate_shared_memory(gl.bfloat16, [BH, 512], SH)
+    qr = gl.allocate_shared_memory(gl.bfloat16, [BH, 64], SH)
+    ks = gl.allocate_shared_memory(gl.bfloat16, [64, 512], SH)
+    kr = gl.allocate_shared_memory(gl.bfloat16, [64, 64], SH)
+    qbase = Q + token * QT + h[:, None] * QH
+    _copy_shared(qs, qbase + d[None, :], h[:, None] < HEADS, ALIGNED_Q)
+    _copy_shared(qr, qbase + 512 + r[None, :], h[:, None] < HEADS, ALIGNED_Q)
+    async_copy.commit_group()
+    async_copy.wait_group(0)
+    acc = gl.full([BH, 512], 0, gl.float32, MMA)
+    m = gl.full([BH], float("-inf"), gl.float32, gl.SliceLayout(1, MMA))
+    denom = gl.full([BH], 0, gl.float32, gl.SliceLayout(1, MMA))
+    blocks = gl.cdiv(gl.cdiv(TOPK, 64), SPLITS)
     for block in range(
-        split * blocks_per_split,
-        tl.minimum((split + 1) * blocks_per_split, tl.cdiv(TOPK, BLOCK_N)),
+        split * blocks, gl.minimum((split + 1) * blocks, gl.cdiv(TOPK, 64))
     ):
-        n = block * BLOCK_N + tl.arange(0, BLOCK_N)
-        slot = tl.load(Indices + token * I_T + n * I_K, n < TOPK, other=-1)
-        valid = (n < TOPK) & (slot >= 0)
-        slot = tl.where(valid, slot, 0).to(tl.int64)
-        row = Cache + (slot // PAGE_SIZE) * C_PAGE + (slot % PAGE_SIZE) * C_ROW
-        raw = tl.load(row[:, None] + d[None, :], valid[:, None], other=0)
-        scales = tl.load(
-            (row + 512).to(tl.pointer_type(tl.float32))[:, None]
-            + tl.arange(0, 4)[None, :],
-            valid[:, None],
-            other=1,
+        n = block * 64 + gl.arange(0, 64, layout=gl.SliceLayout(1, COPY))
+        ids = gl.load(Indices + token * IT + n * IK, n < TOPK, other=-1)
+        valid = (n < TOPK) & (ids >= 0) & (ids < ROWS)
+        if HAS_LENGTHS:
+            valid &= n < gl.load(Lengths + token)
+        row = KV + gl.where(valid, ids, 0).to(gl.int64) * KR
+        _copy_shared(ks, row[:, None] + d[None, :], valid[:, None], ALIGNED_KV)
+        _copy_shared(kr, row[:, None] + 512 + r[None, :], valid[:, None], ALIGNED_KV)
+        async_copy.commit_group()
+        async_copy.wait_group(0)
+        score = gl.full([BH, 64], 0, gl.float32, MMA)
+        for chunk in gl.static_range(4):
+            a = qs.slice(chunk * 128, 128, 1).load(A)
+            b = ks.slice(chunk * 128, 128, 1).permute([1, 0]).load(B)
+            score = mma_v2(a, b, score)
+        score = mma_v2(qr.load(A), kr.permute([1, 0]).load(B), score)
+        valid_mma = gl.convert_layout(valid, gl.SliceLayout(0, MMA))
+        score = gl.where(
+            valid_mma[None, :], score * (SCALE * 1.4426950408889634), float("-inf")
         )
-        kv = raw.to(tl.float8e4nv, bitcast=True).to(tl.float32)
-        kv = (kv.reshape(BLOCK_N, 4, 128) * scales[:, :, None]).reshape(BLOCK_N, 512)
-        kv = kv.to(tl.bfloat16)
-        rope = tl.load(
-            (row + 528).to(tl.pointer_type(tl.bfloat16))[:, None] + r[None, :],
-            valid[:, None],
-            other=0,
-        )
-        scores = tl.dot(q, tl.trans(kv)) + tl.dot(q_rope, tl.trans(rope))
-        scores *= SCALE * 1.4426950408889634
-        scores = tl.where(valid[None, :], scores, float("-inf"))
-        m_next = tl.maximum(m, tl.max(scores, 1))
-        m_safe = tl.where(m_next == float("-inf"), 0.0, m_next)
-        alpha = tl.exp2(m - m_safe)
-        p = tl.exp2(scores - m_safe[:, None])
-        denom = denom * alpha + tl.sum(p, 1)
-        acc = acc * alpha[:, None] + tl.dot(p.to(tl.bfloat16), kv)
-        m = m_next
-    empty = denom == 0
-    inv = 1.0 / tl.where(empty, 1.0, denom)
-    acc *= inv[:, None]
-    lse = tl.where(empty, float("-inf"), m + tl.log2(tl.where(empty, 1.0, denom)))
-    base = (token * SPLITS + split) * 16 + h
-    tl.store(Partial + base[:, None] * 512 + d[None, :], acc)
-    tl.store(PartialLSE + base, lse)
+        next_m = gl.maximum(m, gl.max(score, 1))
+        safe_m = gl.where(next_m == float("-inf"), 0.0, next_m)
+        alpha = gl.exp2(m - safe_m)
+        p = gl.exp2(score - safe_m[:, None])
+        denom = denom * alpha + gl.sum(p, 1)
+        acc *= alpha[:, None]
+        acc = mma_v2(gl.convert_layout(p.to(gl.bfloat16), A), ks.load(B), acc)
+        m = next_m
+    oh = gl.arange(0, BH, layout=gl.SliceLayout(1, MMA))
+    od = gl.arange(0, 512, layout=gl.SliceLayout(0, MMA))
+    base = (token * SPLITS + split) * HEADS + oh
+    gl.store(Partial + base[:, None] * 514 + od[None, :], acc, oh[:, None] < HEADS)
+    gl.store(Partial + base * 514 + 512, m, oh < HEADS)
+    gl.store(Partial + base * 514 + 513, denom, oh < HEADS)
 
 
 @triton.jit
 def _softmax_merge(
     Partial,
-    PartialLSE,
     Sinks,
     Out,
     LSE,
@@ -101,96 +119,95 @@ def _softmax_merge(
     SPLITS: tl.constexpr,
     HAS_SINK: tl.constexpr,
 ):
-    token = tl.program_id(0)
-    head = tl.program_id(1)
+    t, h = tl.program_id(0), tl.program_id(1)
     s = tl.arange(0, SPLITS)
     d = tl.arange(0, 512)
-    base = (token * SPLITS + s) * 16 + head
-    lse = tl.load(PartialLSE + base)
-    m = tl.max(lse, 0)
-    m_safe = tl.where(m == float("-inf"), 0.0, m)
-    weights = tl.exp2(lse - m_safe)
-    denom = tl.sum(weights, 0)
-    empty = denom == 0
-    lse2 = m_safe + tl.log2(tl.where(empty, 1.0, denom))
-    value = tl.sum(
-        tl.load(Partial + base[:, None] * 512 + d[None, :]) * weights[:, None], 0
-    ) / tl.where(empty, 1.0, denom)
+    base = ((t * SPLITS + s) * HEADS + h) * 514
+    maxima = tl.load(Partial + base + 512)
+    sums = tl.load(Partial + base + 513)
+    m = tl.max(maxima, 0)
+    safe_m = tl.where(m == float("-inf"), 0.0, m)
+    weights = tl.exp2(maxima - safe_m)
+    denom = tl.sum(sums * weights, 0)
+    lse2 = safe_m + tl.log2(tl.where(denom > 0, denom, 1.0))
+    value = tl.sum(tl.load(Partial + base[:, None] + d[None, :]) * weights[:, None], 0)
+    value /= tl.where(denom > 0, denom, 1.0)
     if HAS_SINK:
-        sink = tl.load(Sinks + head) * 1.4426950408889634
-        value /= 1.0 + tl.exp2(sink - lse2)
-    value = tl.where(empty, 0.0, value)
-    tl.store(Out + (token * HEADS + head) * 512 + d, value)
-    # Match FlashMLA: natural-log LSE excludes the sink.
+        value /= 1.0 + tl.exp2(tl.load(Sinks + h) * 1.4426950408889634 - lse2)
+    tl.store(Out + (t * HEADS + h) * 512 + d, tl.where(denom > 0, value, 0.0))
     tl.store(
-        LSE + token * HEADS + head,
-        tl.where(empty, float("-inf"), lse2 * 0.6931471805599453),
+        LSE + t * HEADS + h,
+        tl.where(denom > 0, lse2 * 0.6931471805599453, float("-inf")),
     )
 
 
 def smallhead_sparse_decode(
     q: torch.Tensor,
-    cache: torch.Tensor,
+    kv: torch.Tensor,
     indices: torch.Tensor,
     softmax_scale: float,
     sinks: torch.Tensor | None = None,
     *,
-    num_splits: int = 32,
-    block_n: int = 32,
+    topk_length: torch.Tensor | None = None,
+    num_splits: int | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Return BF16 output [T,H,512] and FP32 sink-free LSE [T,H].
+    """BF16 Q [T,H,576], BF16 KV [rows,576], physical indices [T,K].
 
-    Inputs are BF16 q [T,H,576], uint8 cache [pages,page_size,656],
-    int32 physical indices [T,K], and optional FP32 sinks [H].
-    The last dimension must be contiguous; outer strides are supported.
+    Returns BF16 output [T,H,512] and sink-free FP32 LSE [T,H]. Invalid
+    indices (including out-of-range slots) and entries beyond lengths are masked.
     """
     tokens, heads, dim = q.shape
-    assert q.dtype == torch.bfloat16 and dim == 576 and heads in (8, 16)
-    assert cache.dtype == torch.uint8 and cache.ndim == 3 and cache.shape[-1] == 656
-    assert indices.dtype == torch.int32 and indices.shape[0] == tokens
-    assert q.stride(-1) == cache.stride(-1) == 1
-    assert q.is_cuda and q.device == cache.device == indices.device
-    assert num_splits in (1, 2, 4, 8, 16, 32) and block_n in (32, 64)
+    assert q.dtype == kv.dtype == torch.bfloat16
+    assert dim == kv.shape[-1] == 576 and heads in (8, 16, 32)
+    assert kv.ndim == indices.ndim == 2 and indices.shape[0] == tokens
+    assert q.stride(-1) == kv.stride(-1) == 1
+    assert q.is_cuda and q.device == kv.device == indices.device
+    assert indices.dtype == torch.int32 and indices.shape[1] > 0
     if sinks is not None:
-        assert sinks.shape == (heads,) and sinks.dtype == torch.float32
+        assert sinks.dtype == torch.float32 and sinks.shape == (heads,)
         assert sinks.device == q.device and sinks.is_contiguous()
-    partial = torch.empty(
-        (tokens, num_splits, 16, 512), device=q.device, dtype=torch.float32
-    )
-    partial_lse = torch.empty(
-        (tokens, num_splits, 16), device=q.device, dtype=torch.float32
-    )
-    out = torch.empty((tokens, heads, 512), device=q.device, dtype=q.dtype)
+    if topk_length is not None:
+        assert topk_length.dtype == torch.int32 and topk_length.shape == (tokens,)
+        assert topk_length.device == q.device and topk_length.is_contiguous()
+    out = q.new_empty((tokens, heads, 512))
     lse = torch.empty((tokens, heads), device=q.device, dtype=torch.float32)
+    if tokens == 0:
+        return out, lse
+    if num_splits is None:
+        sms = torch.cuda.get_device_properties(q.device).multi_processor_count
+        num_splits = (
+            1
+            if envs.VLLM_BATCH_INVARIANT
+            else min(32, triton.cdiv(sms, tokens), triton.cdiv(indices.shape[1], 64))
+        )
+    assert num_splits > 0
+    num_splits = triton.next_power_of_2(num_splits)
+    partial = torch.empty(
+        (tokens, num_splits, heads, 514), device=q.device, dtype=torch.float32
+    )
     _split_kv[(tokens, num_splits)](
         q,
-        cache,
+        kv,
         indices,
+        topk_length,
         partial,
-        partial_lse,
         q.stride(0),
         q.stride(1),
-        cache.stride(0),
-        cache.stride(1),
-        cache.shape[1],
+        kv.stride(0),
         indices.stride(0),
         indices.stride(1),
+        kv.shape[0],
         heads,
         indices.shape[1],
         softmax_scale,
         num_splits,
-        block_n,
+        topk_length is not None,
+        q.storage_offset() % 8 == q.stride(0) % 8 == q.stride(1) % 8 == 0,
+        kv.storage_offset() % 8 == kv.stride(0) % 8 == 0,
         num_warps=4,
+        num_stages=1,
     )
     _softmax_merge[(tokens, heads)](
-        partial,
-        partial_lse,
-        sinks,
-        out,
-        lse,
-        heads,
-        num_splits,
-        sinks is not None,
-        num_warps=4,
+        partial, sinks, out, lse, heads, num_splits, sinks is not None, num_warps=4
     )
     return out, lse

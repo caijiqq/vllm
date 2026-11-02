@@ -4,101 +4,98 @@ import pytest
 import torch
 
 
-@pytest.mark.parametrize("heads,page_size", [(8, 64), (8, 128), (16, 64)])
-@pytest.mark.parametrize("splits,block_n", [(1, 32), (16, 32), (32, 64)])
-@pytest.mark.parametrize("with_sink", [False, True])
-def test_hy4_smallhead_decode(heads, page_size, splits, block_n, with_sink):
-    """Physical cache gather, empty splits, sink and graph replay match FP32."""
+@pytest.mark.parametrize("heads", [8, 16, 32])
+@pytest.mark.parametrize("splits", [None, 1, 8, 32])
+def test_hy4_smallhead_decode(heads, splits):
+    """Reference design: sparse BF16 gather, sink, empty rows and graph replay."""
     from benchmarks.kernels.benchmark_hy4_smallhead_decode import (
         flashmla_call,
         make_inputs,
         reference,
     )
-    from vllm.models.hy_v4.nvidia.smallhead_sparse_decode import (
-        smallhead_sparse_decode,
-    )
+    from vllm.models.hy_v4.nvidia.smallhead_sparse_decode import smallhead_sparse_decode
 
     torch.manual_seed(42)
-    q, cache, indices, sinks = make_inputs(4, heads, 2048, page_size)
-    # Outer-strided query and index views occur in speculative/mixed batches.
+    q, kv, indices, sinks = make_inputs(heads=heads)
     q = q.repeat_interleave(2, dim=1)[:, ::2]
+    kv = kv.repeat_interleave(2, dim=0)[::2]
     indices = indices.repeat_interleave(2, dim=1)[:, ::2]
     indices[0] = -1
     indices[1, 1:] = -1
     indices[2, ::3] = -1
-    sinks[0], sinks[1] = float("-inf"), float("inf")
-    sinks = sinks if with_sink else None
-    scale = 256**-0.5
-    expected, expected_lse = reference(q, cache, indices, scale, sinks)
+    sinks[0], sinks[1] = -float("inf"), float("inf")
+    lengths = torch.tensor([0, 1, 128, 2048], device="cuda", dtype=torch.int32)
 
     def run():
         return smallhead_sparse_decode(
-            q, cache, indices, scale, sinks, num_splits=splits, block_n=block_n
+            q, kv, indices, 0.0625, sinks, topk_length=lengths, num_splits=splits
         )
 
+    expected, expected_lse = reference(q, kv, indices, 0.0625, sinks, lengths)
     out, lse = run()
-    torch.testing.assert_close(out.float(), expected, rtol=0.02, atol=0.04)
+    torch.testing.assert_close(out.float(), expected, rtol=0.02, atol=0.01)
     torch.testing.assert_close(lse, expected_lse, rtol=1e-4, atol=1e-4)
+    native, native_lse = flashmla_call(q, kv, indices, 0.0625, sinks, lengths)()
+    torch.testing.assert_close(out[1:], native[1:], rtol=0.02, atol=0.01)
+    torch.testing.assert_close(lse[1:], native_lse[1:], rtol=1e-4, atol=1e-4)
     assert torch.count_nonzero(out[0]) == 0
     assert torch.isneginf(lse[0]).all()
-    native_sinks = (
-        sinks
-        if with_sink
-        else torch.full_like(q[0, :, 0], -float("inf"), dtype=torch.float32)
-    )
-    native, native_lse = flashmla_call(q, cache, indices, scale, native_sinks)()
-    # Native FlashMLA leaves empty rows undefined; our output is explicitly zero.
-    torch.testing.assert_close(out[1:], native[1:], rtol=0.02, atol=0.04)
-    torch.testing.assert_close(lse[1:], native_lse[1:], rtol=1e-4, atol=1e-4)
     torch.accelerator.synchronize()
     graph = torch.cuda.CUDAGraph()
     with torch.cuda.graph(graph):
-        captured_out, captured_lse = run()
+        captured, captured_lse = run()
     q.mul_(0.5)
+    indices[3, 0] = kv.shape[0] + 99
     graph.replay()
-    expected, expected_lse = reference(q, cache, indices, scale, sinks)
-    torch.testing.assert_close(captured_out.float(), expected, rtol=0.02, atol=0.04)
+    expected, expected_lse = reference(q, kv, indices, 0.0625, sinks, lengths)
+    torch.testing.assert_close(captured.float(), expected, rtol=0.02, atol=0.01)
     torch.testing.assert_close(captured_lse, expected_lse, rtol=1e-4, atol=1e-4)
 
 
-@pytest.mark.parametrize("enabled,num_decode", [(False, 4), (True, 4), (True, 0)])
-def test_hy4_smallhead_backend(enabled, num_decode):
-    """Exercise real page-table conversion and both backend paths without a model."""
+def test_hy4_smallhead_unaligned_tail():
+    """Unaligned views, a partial KV tile, and no sink use the same contract."""
+    from benchmarks.kernels.benchmark_hy4_smallhead_decode import reference
+    from vllm.models.hy_v4.nvidia.smallhead_sparse_decode import smallhead_sparse_decode
+
+    torch.manual_seed(9)
+    q = torch.randn(2, 8, 577, device="cuda", dtype=torch.bfloat16)[..., 1:]
+    kv = torch.randn(256, 577, device="cuda", dtype=torch.bfloat16)[:, 1:]
+    indices = torch.randint(256, (2, 129), device="cuda", dtype=torch.int32)
+    expected, expected_lse = reference(q, kv, indices, 0.0625, None)
+    out, lse = smallhead_sparse_decode(q, kv, indices, 0.0625)
+    torch.testing.assert_close(out.float(), expected, rtol=0.02, atol=0.01)
+    torch.testing.assert_close(lse, expected_lse, rtol=1e-4, atol=1e-4)
+    out, lse = smallhead_sparse_decode(q[:0], kv, indices[:0], 0.0625)
+    assert out.shape == (0, 8, 512) and lse.shape == (0, 8)
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_hy4_smallhead_backend(enabled):
+    """Real page-table remapping agrees with FP32 for OFF and ON."""
     from types import SimpleNamespace
 
     from benchmarks.kernels.benchmark_hy4_smallhead_decode import make_inputs, reference
     from vllm.models.hy_v4.nvidia.flashmla_sparse import HYV4FlashMLASparseImpl
-    from vllm.v1.attention.backends.mla.flashmla_sparse import FlashMLASparseMetadata
     from vllm.v1.attention.backends.mla.index_group import SparseMLAIndexGroup
-    from vllm.v1.attention.ops.flashmla import get_mla_metadata
 
     torch.manual_seed(7)
-    q, cache, indices, sinks = make_inputs(page_size=128)
-    block_table = torch.stack([torch.randperm(32, device="cuda") for _ in range(4)])
-    physical = block_table.gather(1, (indices // 128).long()) * 128 + indices % 128
-    expected, _ = reference(q, cache, physical.int(), 256**-0.5, sinks)
-    lens = torch.ones(1, dtype=torch.int32, device="cuda")
-    scheduler, _ = get_mla_metadata(
-        lens, 256, 1, num_heads_q=64, topk=2048, is_fp8_kvcache=True
-    )
+    q, kv, indices, sinks = make_inputs()
+    table = torch.stack([torch.randperm(32, device="cuda") for _ in range(4)])
+    physical = table.gather(1, (indices // 128).long()) * 128 + indices % 128
+    expected, _ = reference(q, kv, physical.int(), 0.0625, sinks)
     metadata = SimpleNamespace(
-        num_decode_tokens=num_decode,
+        num_decode_tokens=4,
         num_actual_tokens=4,
         block_size=128,
-        block_table=block_table.int(),
+        block_table=table.int(),
         req_id_per_token=torch.arange(4, device="cuda", dtype=torch.int32),
-        fp8_extra_metadata=FlashMLASparseMetadata.FP8KernelMetadata(
-            scheduler, torch.zeros((1, 1), dtype=torch.int32, device="cuda"), lens
-        ),
+        use_smallhead_decode=enabled,
     )
     impl = object.__new__(HYV4FlashMLASparseImpl)
-    impl.smallhead_triton = enabled
     impl.dcp_world_size = impl.pcp_world_size = 1
-    impl.kv_cache_dtype = "fp8_ds_mla"
-    impl.softmax_scale = 256**-0.5
+    impl.softmax_scale = 0.0625
     impl.sinks = sinks
-    impl.fp8_decode_padded_heads = 64
-    impl.need_to_return_lse_for_decode = False
+    impl.prefill_padding = 64
     impl.index_group_index = 0
     impl.index_group = SparseMLAIndexGroup(
         indices,
@@ -109,9 +106,44 @@ def test_hy4_smallhead_backend(enabled, num_decode):
         torch.cuda.Event(),
         has_indexer=False,
     )
-    out, lse = impl._forward_fp8_kv_mixed_batch(q, cache, indices, metadata)
-    torch.testing.assert_close(out.float(), expected, rtol=0.02, atol=0.04)
-    assert lse is None
+    out, _ = impl._forward_bf16_kv(q, kv.view(-1, 128, 576), indices, metadata, 8)
+    torch.testing.assert_close(out.float(), expected, rtol=0.02, atol=0.01)
+
+
+@pytest.mark.parametrize(
+    "prefill,query_len,enabled,expected",
+    [
+        (False, 1, True, True),
+        (True, 1, True, False),
+        (False, 2, True, False),
+        (False, 1, False, False),
+    ],
+)
+def test_hy4_smallhead_metadata_phase(
+    monkeypatch, prefill, query_len, enabled, expected
+):
+    """A one-token prompt must remain prefill even if the parent calls it decode."""
+    from types import SimpleNamespace
+
+    from vllm.models.hy_v4.nvidia.flashmla_sparse import (
+        HYV4FlashMLASparseMetadataBuilder,
+    )
+    from vllm.v1.attention.backends.mla.flashmla_sparse import (
+        FlashMLASparseMetadataBuilder,
+    )
+
+    monkeypatch.setattr(
+        FlashMLASparseMetadataBuilder,
+        "build",
+        lambda *a: SimpleNamespace(num_actual_tokens=4, num_decode_tokens=4),
+    )
+    builder = object.__new__(HYV4FlashMLASparseMetadataBuilder)
+    builder.smallhead_enabled = enabled
+    builder.num_heads = 8
+    common = SimpleNamespace(
+        max_query_len=query_len, num_reqs=4, is_prefilling=torch.full((4,), prefill)
+    )
+    assert builder.build(0, common).use_smallhead_decode is expected
 
 
 @pytest.mark.parametrize("sm120", [False, True])

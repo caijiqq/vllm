@@ -1,34 +1,71 @@
-# H100 SM90 单算子结果
+# H100 BF16 单算子结果与 SM 分析
 
-2026-11-02，在独立 worktree 的 H100 GPU2 完成。硬件不是 H200。
-8 query heads，QK=576，latent V=512，TopK=2048，BF16 Q，生产算子写入的
-656B FP8 KV。三轮交错测试，CUDA Graph/event timing，32 splits、32-key tile。
+2026-11-02；8 query heads，QK=576，latent V=512，TopK=2048，BF16 Q/KV。
+GPU5 三轮交错测量的中位数，CUDA Graph/event timing，Triton 包含 split+merge。
+原生 FlashMLA 使用本地基线要求的 64-head padding，padding 本身在计时外。
+H100 SM90 的结果不能代替 H200 TP8 Serving 结论。
 
-| Decode tokens | Triton (µs) | 原生 FlashMLA (µs) | 加速比 | ON 时选择 |
+| Decode tokens | 自动 splits | Triton (µs) | 原生 FlashMLA (µs) | 加速比 |
 | --- | --- | --- | --- | --- |
-| 1 | 15.17 | 20.39 | 1.34× | Triton |
-| 2 | 15.38 | 21.40 | 1.39× | Triton |
-| 4 | 16.11 | 20.91 | 1.30× | Triton |
-| 8 | 19.76 | 23.87 | 1.21× | Triton |
-| 16 | 33.06 | 32.10 | 0.97× | FlashMLA |
-| 32 | 63.65 | 47.11 | 0.74× | FlashMLA |
+| 1 | 32 | 8.50 | 59.29 | 6.98× |
+| 2 | 32 | 8.61 | 60.12 | 6.98× |
+| 4 | 32 | 10.83 | 60.09 | 5.55× |
+| 8 | 32 | 15.13 | 61.50 | 4.07× |
+| 16 | 16 | 22.10 | 62.70 | 2.84× |
+| 32 | 8 | 35.01 | 64.64 | 1.85× |
+| 64 | 4 | 59.85 | 73.26 | 1.22× |
+| 128 | 2 | 109.50 | 117.00 | 1.07× |
+| 256 | 1 | 208.57 | 226.82 | 1.09× |
+| 512 | 1 | 408.05 | 444.66 | 1.09× |
 
-每个点轮换 64 份缓存，最小访问 footprint 为 80.8 MB，超过 L2。
-原始数字和环境版本见 [h100_rotating64.json](results/h100_rotating64.json)。
-FlashMLA 的 padding 和 metadata 创建在计时外，Triton 包含 split + merge；
-不包含模型其他计算、索引生成/转换和 collective。
+输入采用独立请求 KV 区域；1/2/4 tokens 轮换 64 组，8–128 tokens 轮换 4 组，
+256/512 tokens 轮换 2 组。各点实际访问 footprint 均超过 50 MB L2，最小值
+70.9 MB；未在每次调用前强制清空 L2。数据分别见
+[小 batch](results/h100_bf16_small.json)、
+[8–128 tokens](results/h100_bf16_decode.json)、
+[256–512 tokens](results/h100_bf16_large.json)。JSON 保留环境和计时口径。
 
-前置参数探索比较了 8/16/32 splits 及 32/64-key tiles；
-[32-key](results/h100_block32.json) 和 [64-key](results/h100_block64.json)
-使用 8 缓存，可能复用 L2，不与最终 64 缓存数字混为同一口径。
-32 splits 对 1–8 token 有收益，较大的 batch 回退。64-key tile 在最小 batch
-略快但在 8 token 时优势较小，首版使用单一 32-key tile，避免复杂参数表。
+当前 H100 上没有观察到 128 tokens 后的明显回退，但 64 tokens 之后优势只有
+约 7–22%。单算子仍需处理与 batch 近似成正比的 KV 字节数；大 batch 下两种
+实现都接近内存带宽限制。不能据此推导 Serving 的 TTFT/TPOT、吞吐或延迟：
+Serving 并发与 Decode batch 不同，还包含 prefill、Indexer、MoE、TP 通信和排队。
 
-相关回归 **25 passed**。FP32 reference、原生 FlashMLA、空行、无穷 sink、strided 输入、page size、
-split 配置和 CUDA Graph replay 已验证；Backend OFF/ON 及 prefill fallback
-另用真实 page table 和 index-group 转换验证。输出按 BF16 显式容差验收，
-不声明逐 bit 相同。完整模型数值评估和 H200 TP8 Serving A/B 留给目标环境。
+本机 `0.32.0+cu129` 的 BF16 FlashMLA 直接使用 8 heads 会报
+`Unsupported h_q: 8`，只能按现有 HY4 路径 pad 到 64 heads。参考分支允许
+原生 BF16 使用 8 heads。因此本结果证明对**本地稳定基线**的收益，不能宣称
+优于同事使用的原生 FlashMLA 版本，也不能与此前 656B FP8 KV 数字横向比较。
 
-本机用新 worktree 源码加已安装 CUDA 扩展的 overlay，未重编 CUDA。
-没有在缺少完整 HY4 权重、且 GPU 被其他任务占用时尝试 TP8 Serving。
-该结果只能支持 H100 单算子小 batch 的结论；H200 是否保留相同阈值需实测。
+## SM 是否打满
+
+GPU2 使用 Nsight Compute 2025.2.1，batch=128，独立 KV 区域，自动 2 splits。
+原始指标及单位见 [h100_bf16_ncu.json](results/h100_bf16_ncu.json)。
+
+| Kernel | CTA 数 | Registers/thread | Shared/CTA | Achieved occupancy | Tensor active | DRAM throughput |
+| --- | --- | --- | --- | --- | --- | --- |
+| Triton split | 256 | 196 | 95.232 KB | 11.98% | 16.09% | 82.04% |
+| Triton merge | 1024 | 29 | 2.048 KB | 41.59% | 0.19% | 24.64% |
+| FlashMLA BF16 pad64 | 128 | 168 | 231.888 KB | 18.40% | 39.33% | 80.94% |
+
+Shared 列包含 driver 保留空间，KB 为十进制。Tensor active 和 DRAM throughput
+是 Nsight 的 peak-sustained elapsed 百分比；occupancy 是 active warps 指标。
+profiler 使用 replay 和默认时钟/缓存控制，其耗时不混入上面的稳态 benchmark。
+
+**计算 SM 没有打满，DRAM 已达到工具报告峰值的约 82%。** Split kernel 每 CTA
+4 warps，寄存器与共享内存限制为每 SM 最多 2 CTA；理论 occupancy 约 12.5%，
+实测约 12%，并不是只有 12% 的 SM 工作。256 个 CTA 可覆盖本机 132 个 SM。
+原生 kernel 还计算 padding heads，较高 Tensor active 不等于同等有效工作更多。
+
+参考设计减少了间接 KV gather 的寄存器中转，并随 batch 减少 splits。在 batch
+128 时仅 2 splits，FP32 partial buffer 约 4.02 MiB；大 batch 不再保留 32 份
+partial。后续若针对 H200 继续调优，应重测内存吞吐和延迟，而非仅追求 occupancy。
+
+## 验证范围
+
+相关算子及 Backend 回归 **23 passed**，涵盖 FP32/FlashMLA 对照、8/16/32 heads、
+不同 splits、strided/未对齐输入、长度/无效项、空行、无穷 sink、TopK 尾块、
+CUDA Graph replay、真实页表映射及 prefill fallback。使用 BF16 显式容差，
+最大绝对误差记录在 JSON 中；不声称逐 bit 一致或已完成模型精度评估。
+
+Backend 默认原生 FlashMLA；新路径仅在显式开启且满足参考设计适用条件时使用。
+H200 TP8 Serving A/B、完整模型 Graph 与模型质量验证留给用户目标环境，
+操作命令见 [README](README.md)。未合并 iHC，也未修改权重或 Scheduler。
