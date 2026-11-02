@@ -92,6 +92,10 @@ JSON 的 `splits=0` 表示上述自适应策略。`estimated_kv_gbps` 按 `T*K*1
 内核版本有差异，不能直接拿本机加速比与同事的 Serving 数字对比。
 详见 [结果及 SM 分析](RESULTS.md)。
 
+布局必要性另做了 BF16 同口径消融：调优的普通 Triton 与 Gluon 性能接近，
+shared swizzle 和异步 KV 加载则有实测收益。完整数据与复现命令见
+[Gluon 消融报告](ABLATION.md)。
+
 可选的 Nsight Compute demo，编译和输入准备在采样区间之外：
 
 ```bash

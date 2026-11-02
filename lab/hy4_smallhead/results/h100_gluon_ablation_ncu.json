@@ -1,0 +1,185 @@
+{
+  "gpu": "NVIDIA H100 80GB HBM3",
+  "gpu_uuid": "5688cfc2-b809-3432-8541-01d0bc45c0c4",
+  "cuda_visible_devices": "5",
+  "sm_count": 132,
+  "torch": "2.13.0+cu129",
+  "triton": "3.7.1",
+  "cuda": "12.9",
+  "seed": 42,
+  "input_seed_policy": "seed + tokens",
+  "rounds": 3,
+  "rep_ms": 100,
+  "kv_dtype": "bfloat16",
+  "topk": 2048,
+  "independent_requests": true,
+  "timing": "profiling_only_not_latency_benchmark",
+  "source_commit": "daa54b83bb61f49954d8823a0a3197f448b6e480",
+  "results": [
+    {
+      "tokens": 128,
+      "heads": 8,
+      "splits": 2,
+      "pool": 2,
+      "variant": "current",
+      "knobs": {},
+      "regs": 196,
+      "spills": 0,
+      "shared_bytes": 94208,
+      "cp_async_instructions": 49,
+      "mma_instructions": 136,
+      "wgmma_instructions": 0,
+      "ir_layouts": [
+        "#mma = #ttg.nvidia_mma<{versionMajor = 2, versionMinor = 0, warpsPerCTA = [1, 4], instrShape = [16, 8]}>",
+        "#shared = #ttg.swizzled_shared<{vec = 8, perPhase = 1, maxPhase = 8, order = [1, 0]}>",
+        "#shared1 = #ttg.swizzled_shared<{vec = 8, perPhase = 1, maxPhase = 8, order = [0, 1]}>"
+      ],
+      "accessed_kv_bytes": 568020096,
+      "max_abs_error": 0.0019165277481079102,
+      "total_samples_us": [],
+      "split_samples_us": [],
+      "ncu_metrics": {
+        "launch__registers_per_thread": "196",
+        "launch__shared_mem_per_block": "95.232000",
+        "sm__throughput.avg.pct_of_peak_sustained_elapsed": "15.630577",
+        "sm__warps_active.avg.pct_of_peak_sustained_active": "11.995152",
+        "sm__pipe_tensor_cycles_active.avg.pct_of_peak_sustained_elapsed": "15.630577",
+        "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": "80.647018",
+        "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": "8798",
+        "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": "15955",
+        "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": "7217758",
+        "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum": "179795"
+      },
+      "shared_load_conflict_pct": 0.12189380691344874
+    },
+    {
+      "tokens": 128,
+      "heads": 8,
+      "splits": 2,
+      "pool": 2,
+      "variant": "gl_loadstore",
+      "knobs": {
+        "ASYNC_KV": false
+      },
+      "regs": 254,
+      "spills": 0,
+      "shared_bytes": 94208,
+      "cp_async_instructions": 13,
+      "mma_instructions": 136,
+      "wgmma_instructions": 0,
+      "ir_layouts": [
+        "#mma = #ttg.nvidia_mma<{versionMajor = 2, versionMinor = 0, warpsPerCTA = [1, 4], instrShape = [16, 8]}>",
+        "#shared = #ttg.swizzled_shared<{vec = 8, perPhase = 1, maxPhase = 8, order = [1, 0]}>",
+        "#shared1 = #ttg.swizzled_shared<{vec = 8, perPhase = 1, maxPhase = 8, order = [0, 1]}>"
+      ],
+      "accessed_kv_bytes": 568020096,
+      "max_abs_error": 0.0019165277481079102,
+      "total_samples_us": [],
+      "split_samples_us": [],
+      "ncu_metrics": {
+        "launch__registers_per_thread": "254",
+        "launch__shared_mem_per_block": "95.232000",
+        "sm__throughput.avg.pct_of_peak_sustained_elapsed": "13.089834",
+        "sm__warps_active.avg.pct_of_peak_sustained_active": "11.945469",
+        "sm__pipe_tensor_cycles_active.avg.pct_of_peak_sustained_elapsed": "12.365304",
+        "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": "63.857368",
+        "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": "5063",
+        "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": "44722",
+        "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": "7214023",
+        "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum": "2567858"
+      },
+      "shared_load_conflict_pct": 0.07018275378384571
+    },
+    {
+      "tokens": 128,
+      "heads": 8,
+      "splits": 2,
+      "pool": 2,
+      "variant": "gl_no_swizzle",
+      "knobs": {
+        "MAX_PHASE": 1
+      },
+      "regs": 186,
+      "spills": 0,
+      "shared_bytes": 94208,
+      "cp_async_instructions": 49,
+      "mma_instructions": 136,
+      "wgmma_instructions": 0,
+      "ir_layouts": [
+        "#mma = #ttg.nvidia_mma<{versionMajor = 2, versionMinor = 0, warpsPerCTA = [1, 4], instrShape = [16, 8]}>",
+        "#shared = #ttg.swizzled_shared<{vec = 8, perPhase = 1, maxPhase = 1, order = [1, 0]}>",
+        "#shared1 = #ttg.swizzled_shared<{vec = 8, perPhase = 1, maxPhase = 1, order = [0, 1]}>"
+      ],
+      "accessed_kv_bytes": 568020096,
+      "max_abs_error": 0.0019165277481079102,
+      "total_samples_us": [],
+      "split_samples_us": [],
+      "ncu_metrics": {
+        "launch__registers_per_thread": "186",
+        "launch__shared_mem_per_block": "95.232000",
+        "sm__throughput.avg.pct_of_peak_sustained_elapsed": "5.091844",
+        "sm__warps_active.avg.pct_of_peak_sustained_active": "12.221347",
+        "sm__pipe_tensor_cycles_active.avg.pct_of_peak_sustained_elapsed": "5.091844",
+        "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": "26.219703",
+        "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": "47714634",
+        "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": "20",
+        "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": "54923594",
+        "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum": "163860"
+      },
+      "shared_load_conflict_pct": 86.87456614729182
+    },
+    {
+      "tokens": 128,
+      "heads": 8,
+      "splits": 2,
+      "pool": 2,
+      "variant": "tl_n64_w4_s2",
+      "knobs": {
+        "num_stages": 2
+      },
+      "regs": 197,
+      "spills": 0,
+      "shared_bytes": 94464,
+      "cp_async_instructions": 82,
+      "mma_instructions": 136,
+      "wgmma_instructions": 0,
+      "ir_layouts": [
+        "#mma = #ttg.nvidia_mma<{versionMajor = 2, versionMinor = 0, warpsPerCTA = [1, 4], instrShape = [16, 8]}>",
+        "#shared = #ttg.swizzled_shared<{vec = 8, perPhase = 1, maxPhase = 8, order = [1, 0]}>",
+        "#shared1 = #ttg.swizzled_shared<{vec = 1, perPhase = 1, maxPhase = 1, order = [0]}>"
+      ],
+      "accessed_kv_bytes": 568020096,
+      "max_abs_error": 0.0019165277481079102,
+      "total_samples_us": [],
+      "split_samples_us": [],
+      "ncu_metrics": {
+        "launch__registers_per_thread": "197",
+        "launch__shared_mem_per_block": "95.488000",
+        "sm__throughput.avg.pct_of_peak_sustained_elapsed": "19.219982",
+        "sm__warps_active.avg.pct_of_peak_sustained_active": "11.993121",
+        "sm__pipe_tensor_cycles_active.avg.pct_of_peak_sustained_elapsed": "15.468398",
+        "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": "79.019928",
+        "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": "44675",
+        "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": "14284",
+        "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": "7302787",
+        "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum": "264140"
+      },
+      "shared_load_conflict_pct": 0.6117527459037214
+    }
+  ],
+  "nsight_compute": "2025.2.1",
+  "metric_units": {
+    "launch__registers_per_thread": "register/thread",
+    "launch__shared_mem_per_block": "Kbyte/block",
+    "sm__throughput.avg.pct_of_peak_sustained_elapsed": "%",
+    "sm__warps_active.avg.pct_of_peak_sustained_active": "%",
+    "sm__pipe_tensor_cycles_active.avg.pct_of_peak_sustained_elapsed": "%",
+    "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed": "%",
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum": "",
+    "l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_st.sum": "",
+    "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": "",
+    "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum": ""
+  },
+  "cache_control": "default all",
+  "clock_control": "default base"
+}
