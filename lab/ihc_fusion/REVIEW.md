@@ -4,7 +4,7 @@
 
 ## 阅读顺序
 
-1. 本文：问题、演进、性能与面试边界。
+1. 本文：问题、演进、性能与面试边界；另见[分支迁移与重构专项复盘](BRANCH_REFACTOR.md)，补齐开发分支重构前后状态。
 2. [方案总结](IHC_FUSION_SUMMARY.md)：Serving 收益及实现概览，旧描述以本文勘误为准。
 3. [TP4 Forward 汇总](results/tp4_validation/20261022T021746Z/SUMMARY.md)与[完整报告](results/tp4_validation/20261022T021746Z/REPORT.md)：同层和跨层对照。
 4. [Serving 原始证据](results/serving_h100_tp4_9rounds/README.md)：54组 JSON、日志、实际运行脚本、配对统计与离线重算。
@@ -21,9 +21,11 @@ HY4 使用4路残差。子层边界的 Post 更新、下一子层 Pre 的 gate �
 | 原路径 | Post、Pre、RMSNorm 分离 | 建立原始算子和 Golden 双对照 |
 | Single Lab | 每 token 一个 CTA，融合 Post+Pre | 大 N 收益明显，小 N 并行度不足 |
 | Two-stage Lab | Post+Pre1 多 CTA 分片，复用 Pre2 合并 | 改善小 N；冷热缓存、D、dtype 改变胜者，没有采用统一切换阈值 |
-| 中间 Runtime | 同层 Attention Post→MLP Pre；跨层 MLP Post→下一层 Attention Pre | 仅 H100、Eager、纯 Prefill、N=512～8192 等保守路由 |
+| 早期 Runtime | 同层 Attention Post→MLP Pre；跨层 MLP Post→下一层 Attention Pre | 初期为 H100、Eager、纯 Prefill、N=512～8192；开发分支随后多次调整 Graph/混合资格，详见重构专项 |
 | 最终 Runtime | Post+Pre+RMSNorm 单 kernel；跨层携带 pending Post | 去除独立 RMSNorm；保留 PP 边界与 HCHead 前的 Post 完成 |
 | 最终调参 | N≤128 用 BLOCK_K=2048，其余1024；autotune | 小 N 改善，大 N 基本持平，停止扩大参数搜索 |
+
+开发分支在 `f7c538cc2e` 集中重构实现与验证，随后在 `713fb9e7f8` 单独调优。上述最终状态不能代表所有中间提交。
 
 最终代码的 autotune key 是 `(D, BLOCK_K)`，候选 `(warps, stages)` 为 `(4,1)/(4,2)/(4,3)/(8,1)`。没有将 Lab Two-stage 接入生产自动分发。
 

@@ -1,0 +1,18 @@
+{
+  "merge_base": "5df63a7203cdb9328d824a27b682e77c7b9928be",
+  "lab_head": "da9bc79158e82dc7777ceb9c3c425bd2c836e22c",
+  "development_migration": "990a299deef16a504cf1392b74cff7eeb9fb7fe0",
+  "migration_file_blobs": {
+    "vllm/models/hy_v4/nvidia/model.py": {
+      "da9bc79158": "fd25a1a2f8f087f3604140667580cd8569b98014",
+      "990a299dee": "fd25a1a2f8f087f3604140667580cd8569b98014"
+    },
+    "vllm/models/hy_v4/nvidia/triton_ihc_post_pre.py": {
+      "da9bc79158": "73658b6be1293a4e6c07c53a92cb8cf1f3fa1cd8",
+      "990a299dee": "73658b6be1293a4e6c07c53a92cb8cf1f3fa1cd8"
+    }
+  },
+  "refactor_parent": "baabc917e5c02f7a4b6632c86b0109e27962ffa4",
+  "refactor": "f7c538cc2eea1b6e84071b2d2a81ab49916b3576",
+  "refactor_stat": "25 files changed, 253 insertions(+), 3162 deletions(-)"
+}

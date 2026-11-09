@@ -1,0 +1,16 @@
+9539f53e112acb642a0e418dc1650749dec68d36 2026-10-22T05:02:26+00:00 chore(ihc): ignore generated iHC lab caches
+990a299deef16a504cf1392b74cff7eeb9fb7fe0 2026-10-22T05:02:35+00:00 feat(hy4): add iHC PostPre fusion kernel and eager dispatch
+79447ce5f9c7dd3cf7fc3b1ede29c8f3d8e0f60d 2026-10-22T05:02:45+00:00 test(ihc): add frozen Lab kernels, golden and benchmarks
+dcb79746f8992ea72b9c8e4db8307f1968f298a8 2026-10-22T05:02:49+00:00 test(hy4): add model-level PostPre fusion tests
+aa72b736982ed2456c7e541ab8130645d3bf5d0d 2026-10-22T05:03:03+00:00 docs(ihc): record public H100 validation results
+300bc325c603fd15f2ac7b7efe41b6f7fa1e54df 2026-10-23T01:14:51+00:00 fix(hy4): gate iHC PostPre fusion on SM90 capability
+ebf4432ff332b2cbdd4985ad797373cc5f314336 2026-10-23T01:30:10+00:00 fix(hy4): use stable iHC dispatch during CUDA graph capture
+58fd65e9bd7c61975c9fbb929d61f18160bd3368 2026-10-23T01:41:40+00:00 test(hy4): cover graph replay and record numerical blockers
+ed6021fded3ddb13d1b2113427e3fcb7798e0497 2026-10-23T08:52:52+00:00 chore(ihc): checkpoint before serving benchmark migration
+e393f5c92e82208187c949a9433149380f913c44 2026-10-23T22:51:09+00:00 feat(ihc): add TP8 runtime validation harness
+244dfa61d9cbcc2c91b421fe95137aa884fcbf47 2026-10-25T14:21:06+00:00 feat(ihc): audit TP8 fusion validation paths
+baabc917e5c02f7a4b6632c86b0109e27962ffa4 2026-10-26T11:34:09+00:00 feat(ihc): add HY4 iHC fusion
+f7c538cc2eea1b6e84071b2d2a81ab49916b3576 2026-10-27T06:00:29+00:00 Simplify HY4 iHC fusion validation
+713fb9e7f82cb8ac87c90edbba7d4419ee604a6d 2026-10-27T23:48:36+00:00 Optimize HY4 iHC fusion tuning and fix hidden-state validation
+e3e9cdee606951beeb18fee7834c59a86efab70b 2026-10-29T07:25:16+00:00 docs(ihc): 冻结 iHC 融合方案并记录 H100 Serving 验证结论
+4f1fe69872fa689176703713b33c08f06169a291 2026-11-01T22:08:07-08:00 docs(ihc): summarize three-layer TP4 performance and history

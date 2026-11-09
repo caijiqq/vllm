@@ -1,0 +1,3737 @@
+diff --git a/lab/ihc_fusion/README.md b/lab/ihc_fusion/README.md
+index f0eeec27c6..e690d0b399 100644
+--- a/lab/ihc_fusion/README.md
++++ b/lab/ihc_fusion/README.md
+@@ -1,126 +1,40 @@
+-# HY4 iHC：Numerical / Runtime / Performance
++# HY4 iHC
+ 
+-默认验证只覆盖生产 BF16 / D6144 / C4。独立 PyTorch Golden、固定官方
+-Post + Pre1 + Pre2 Baseline、数值阈值和 Kernel 均保持原样。生产 Runtime 测试
+-不依赖 Lab；Lab 复用生产测试中原有的数据生成和数值验收 helper，避免维护两份规则。
+-
+-## 本地算子与 Runtime
+-
+-从仓库根目录运行，选择空闲 GPU 和新的输出目录：
++这个目录只保留 iHC 的实现、参考实现和历史结果。正确性验证使用
++`tests/models/test_hyv4_ihc_fusion.py`：
+ 
+ ```bash
+-export HY4_TP8_GPUS=1
+-export HY4_TP8_RUN=/tmp/hy4-local
+-bash lab/ihc_fusion/benchmarks/tp8_validation/run.sh validate.py --suite local
++CUDA_VISIBLE_DEVICES=0 .venv/bin/python -m pytest \
++  tests/models/test_hyv4_ihc_fusion.py -s -q
+ ```
+ 
+-此入口按文件隔离执行现有 pytest，输出日志、JUnit、数值和实际 GPU launch 记录：
+-
+-- Numerical：N128/513/8192；zero/tiny/large/cancel/saturated；Golden 与官方对照；
+-  预分配 Baseline 等价性；生产单 Kernel 与官方三 Kernel 的真实 launch。
+-- Runtime：路由上下界、dtype/layout/metadata 回退、实际 Dispatch、Pending 消费、
+-  首末层；N128/512/8192 三层 Original/Intra/Cross。Intra/Cross 独立验收。
+-- Graph：FULL N512、breakable N1024，分别有/无捕获 metadata；同图更新输入，
+-  回放 Prefill/Mixed/Padding/Decode，要求 ON/OFF 逐位一致且 GPU trace 无融合调用。
+-- CPU：快照有效性、严格失败保留、配置与配对 Rank-MAX 统计。
++测试只打印两类指标：
+ 
+-可直接使用 pytest 文件路径和 `-k` 选择子集，无新增配置框架。生产文件为
+-`tests/models/test_hyv4_ihc_fusion.py`，Golden 数值文件为
+-`lab/ihc_fusion/tests/test_post_pre.py`，CPU 检查为 `test_prefill_workload.py`。
+-实验性 Two-Stage 不进入默认集合；需要时显式运行
+-`pytest lab/ihc_fusion/tests/check_decode_two_stage.py`。通用 Shape/dtype 扩展矩阵
+-已移出日常验证；这不意味着所有 Lab 扩展均已验证。
++- 单算子：融合 Post+Pre 与原始 Post、Pre 的每个输出的最大绝对误差和余弦相似度。
++- 端到端：三层 Decoder 的每层 hidden state 的最大绝对误差和余弦相似度。
+ 
+-## H200 完整权重 TP8
+-
+-以下命令直接使用同一 Harness，不固定设备型号、checkpoint 或层数。
+-`run.sh` 检查选中 GPU 空闲，不清理其他进程。部署环境需安装匹配的 vLLM/CUDA
+-依赖；当前 checkout 的 `bootstrap/sitecustomize.py` 复用已安装 wheel 的扩展。
++78 层全量 HY4 使用同一个测试文件中的可选入口。它通过 vLLM worker extension
++在真实模型层上采样最后一个 prompt token 的 hidden state：
+ 
+ ```bash
+-export HY4_TP8_GPUS=0,1,2,3,4,5,6,7  # 改成实际分配且空闲的 GPU
+-export HY4_TP8_CHECKPOINT=/path/to/full-HY4-checkpoint
+-export HY4_TP8_RUN=/path/to/results/hy4-tp8
+-H=lab/ihc_fusion/benchmarks/tp8_validation/run.sh
+-
+-# Numerical：同实例 Original A/A + Original/Intra/Cross Hidden State A/B。
+-bash "$H" validate.py --tp-size 8 --shapes 128 512 8192 --aa-repeats 2 --warmup 2
+-
+-# Runtime + E2E：每 rank 实际 Kernel trace 在计时结束后采集；无正确性 Gate。
+-bash "$H" benchmark.py --tp-size 8 --tokens 8192 --warmup 6 --rounds 9 --profile
+-
+-# Serving Eager：原生 vllm bench serve 请求、流式指标和详细 JSON。
+-bash "$H" serving.py --tp-size 8 --host 127.0.0.1 --port 18080 \
+-  --execution eager --input-len 8192 --output-len 128 --concurrency 1 4 \
+-  --request-count 16 --request-rate inf --warmup 2 --rounds 3
+-
+-# 完整模型 Graph 启动/捕获/请求 smoke；当前 Runtime 全部回退 Original。
+-bash "$H" serving.py --tp-size 8 --host 127.0.0.1 --port 18080 \
+-  --execution graph --input-len 512 --output-len 8 --concurrency 1 \
+-  --request-count 2 --warmup 1 --rounds 1
++HY4_FULL_CHECKPOINT=/path/to/full-HY4-checkpoint \
++HY4_FULL_TP=8 \
++.venv/bin/python -m pytest tests/models/test_hyv4_ihc_fusion.py \
++  -k full_hy4_hidden_metrics -s -q
+ ```
+ 
+-不同阶段写入 `validation/`、`performance/`、`serving/{eager,graph}/`。
+-同阶段再次运行需新的 `HY4_TP8_RUN`。TP 默认取 GPU 数；`--modes original intra cross`
+-可选择以 Original 为基准的子集。模型设置只通过 `--llm-overrides JSON` 覆盖，
+-例如 `'{"gpu_memory_utilization":0.85,"max_num_seqs":8}'`，TP/checkpoint 使用专用参数。
+-H200 全模型必须根据实际权重占用设置内存比例，以上命令不代表已完成 H200 验收。
+-
+-模型数值采样限定 Eager/PP1，一次新鲜、完整、无 Padding 的 Forward。
+-快照编号、有效输入/Positions/Query 区间和参考生命周期必须匹配；陈旧、分块、
+-多次 Forward 或 Graph hook 结果记为 INVALID。物理 KV 地址不同不等于逻辑输入不同。
+-JSON 保留 PASS/FAIL/INVALID、逐位一致性、Max Abs、Relative L2、Cosine 和 ULP。
+-`--aa-repeats 6 --modes original` 可按需复现 A/A；不默认扩展逐层诊断。
+-
+-Forward 计时仍为各 rank 的 CUDA event 时间逐轮取 MAX，再统计配对收益。
+-Barrier、模型初始化、生成输入和 profile 不计入该区间；另外保存 generate wall time。
+-这与 `vllm bench latency/throughput` 的指标不同，不互相替代。
+-`--profile` 只保留 Forward 范围和实际 Kernel 计数，删除模块分解/重叠统计。
+-未开启时明确 `kernel_hit_verified=false`。结果自动打印并保存原始 `timing.csv`、
+-配置和 `timing_summary.json`。历史 TP4/TP8 原始计时及 trace 仍可离线解析：
++性能测试直接使用 vLLM 自带的 `vllm serve` 和 `vllm bench serve`：
+ 
+ ```bash
+-.venv/bin/python -S lab/ihc_fusion/benchmarks/tp8_validation/analyze_perf.py \
+-  /path/to/saved/performance --output-dir /tmp/hy4-analysis
+-```
+-
+-Serving 复用 `RemoteOpenAIServer` 的启动等待和自有进程清理，只覆盖解释器启动方式。
+-请求与指标完全交给 `vllm bench serve`：TTFT/TPOT P50/P90、请求吞吐、Output tokens/s、
+-成功率、各轮相对加速比。每模式使用固定 seed、等长随机请求、greedy、ignore_eos，
+-保存实际启动参数、原始详细 JSON、`summary.json/csv`。失败、长度不足、模式缺失等
+-不产生正常性能结论。TPOT 为 `(latency - ttft)/(output_tokens - 1)`，ITL 是流式事件
+-间隔；不保证一个事件只有一个 Token。Graph 只报告 Original，不计算融合加速比。
+-启动开关不等于 Serving 实际 Kernel 命中，Mixed/小 N 仍可能回退。
+-
+-## 一个 Kernel 微基准
++CUDA_VISIBLE_DEVICES=0,1,2,3 .venv/bin/vllm serve /path/to/HY4-checkpoint \
++  --tensor-parallel-size 4 --enforce-eager
+ 
+-旧 `bench_decode_two_stage.py`、`bench_prefill_selection.py` 合并到以下入口；
+-删除 `audit_baseline_scope.py`、`audit_postpre_timing.py`，保留其全部历史结果。
+-预分配、官方三次 launch、25ms Graph 预热和 FlashInfer 冷 L2 轮转口径保持不变。
+-CUPTI 不可用时采用完整轮转周期的 Graph/Event fallback。hot 单独使用 32 次 Graph
+-调用，与 cold 分开记录；不会混合比较。Cross 只在 Runtime/模型级测量。
+-
+-```bash
+-export CUDA_VISIBLE_DEVICES=1
+-export PYTHONPATH="$PWD/lab/ihc_fusion/benchmarks/tp8_validation/bootstrap:$PWD"
+-.venv/bin/python -m lab.ihc_fusion.benchmarks.bench_post_pre \
+-  --tokens 128,513,8192 --hidden 6144 --dtypes bfloat16 \
+-  --magnitude 2 --hc-eps 1e-6 --warmup 30 --rounds 3 --repeat-ms 100 \
+-  --output /tmp/hy4-kernel.json
++.venv/bin/vllm bench serve \
++  --base-url http://127.0.0.1:8000 \
++  --model /path/to/HY4-checkpoint \
++  --input-len 8192 --output-len 512 --num-prompts 16
+ ```
+ 
+-`--two-stage --two-warps 8 --cache both` 对应原三臂 Prefill 实验；
+-`--hidden 4096,7168 --tokens 1,8,32,128 --two-stage` 对应原 Decode 实验。
+-保留 `--warps`、dtype/shape、warmup/rounds/repeat-ms 配置，不默认进行参数搜索。
+-默认 magnitude=1.7、hc_eps=2e-6 沿用原主微基准；上述生产参数显式覆盖，JSON 保存配置。
+-每个计时臂必须先通过冻结 Golden/Official 比较；保存 FlashInfer 原始 samples 和汇总。
+-没有删改 `kernels/`、`reference/`、`baselines/` 中的实现。
+-
+-## 尚未闭环的数值验收
+-
+-Humming MXFP8 Stream-K 的模型级 Original A/A 差异仍未解决；固定输入重放中关闭
+-Stream-K 曾恢复逐位一致，但本 Harness 不强制更改模型计算。不能将所有 A/B 差异
+-归因于融合。N8192 三层链的严格数值失败继续返回 FAIL；没有 skip/xfail 或放宽阈值。
+-算子 Golden 通过、Runtime 正常或性能正收益都不等于全模型严格数值通过。
+-历史证据位于 `results/`；已有 `decode_profile.py` 保留为按需工具，非默认流程。
+-`H200_TP8_MANUAL_TEST.md`、`RUNTIME_GRAPH_VALIDATION.md` 为历史记录，当前命令以本页为准。
++测试输入 shape 从层参数读取；权重是否切分、GPU 是 H100 还是 H200
++不改变测试入口。融合 Kernel 的 autotune 由 Triton 按 `(N, D)` 自动选择配置，
++Cross 输出的 Decoder RMSNorm 也在同一个 Kernel 中完成。
+diff --git a/lab/ihc_fusion/benchmarks/bench_post_pre.py b/lab/ihc_fusion/benchmarks/bench_post_pre.py
+deleted file mode 100644
+index 90213f0762..0000000000
+--- a/lab/ihc_fusion/benchmarks/bench_post_pre.py
++++ /dev/null
+@@ -1,236 +0,0 @@
+-# SPDX-License-Identifier: Apache-2.0
+-# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+-"""Preallocated Official/Single (optional Two-Stage) kernel A/B; no Runtime Cross."""
+-
+-import argparse
+-import functools
+-import hashlib
+-import importlib.metadata
+-import importlib.util
+-import json
+-import math
+-import os
+-import statistics
+-import subprocess
+-import sys
+-from pathlib import Path
+-
+-import torch
+-import triton
+-from flashinfer.testing import bench_gpu_time_with_cudagraph, bench_gpu_time_with_cupti
+-from flashinfer.testing.utils import calculate_rotation_count
+-
+-from lab.ihc_fusion.baselines.official import (
+-    official_post_pre,
+-    official_post_pre_into,
+-    provenance,
+-)
+-from lab.ihc_fusion.kernels.fused_post_pre import fused_post_pre
+-from lab.ihc_fusion.reference.torch_post_pre import torch_post_pre
+-from lab.ihc_fusion.tests.cases import DTYPES, check_outputs, make_case
+-
+-
+-def baseline_call(*args):
+-    official_post_pre_into(*args[:9], out=args[9], partial=args[10])
+-
+-
+-def fused_call(*args, num_warps):
+-    fused_post_pre(*args[:9], out=args[9], num_warps=num_warps)
+-
+-
+-def two_call(*args, num_warps=8):
+-    from lab.ihc_fusion.kernels.decode_two_stage import decode_two_stage
+-
+-    decode_two_stage(*args[:9], out=args[9], partial=args[10], num_warps=num_warps)
+-
+-
+-def package_version(name):
+-    try:
+-        return importlib.metadata.version(name)
+-    except importlib.metadata.PackageNotFoundError:
+-        return None
+-
+-
+-def get_timer():
+-    if (
+-        importlib.util.find_spec("cupti")
+-        and int((package_version("cupti-python") or "0").split(".")[0]) >= 13
+-    ):
+-        return "CUPTI + CUDA Graph, cold L2", bench_gpu_time_with_cupti
+-    return "CUDA Events + CUDA Graph, cold L2 rotating buffers (CUPTI absent)", None
+-
+-
+-def time_call(fn, inputs, repeat_ms, timer, *, cold=True):
+-    tensors = list(inputs[:6]) + list(inputs[9]) + [inputs[10]]
+-    rotations = calculate_rotation_count(tensors, torch.device("cuda"))
+-    # Cover a whole rotation cycle. Ten calls would leave decode weights in L2.
+-    calls = rotations * math.ceil(32 / rotations)
+-    if not cold:
+-        calls = 32
+-        samples = bench_gpu_time_with_cudagraph(
+-            fn,
+-            input_args=inputs,
+-            cold_l2_cache=False,
+-            num_iters_within_graph=calls,
+-            dry_run_time_ms=25,
+-            repeat_time_ms=repeat_ms,
+-        )
+-    elif timer is not None:
+-        samples = timer(
+-            fn,
+-            input_args=inputs,
+-            use_cuda_graph=True,
+-            cold_l2_cache=True,
+-            dry_run_time_ms=25,
+-            repeat_time_ms=repeat_ms,
+-        )
+-    else:
+-        samples = bench_gpu_time_with_cudagraph(
+-            fn,
+-            input_args=inputs,
+-            cold_l2_cache=True,
+-            num_iters_within_graph=calls,
+-            dry_run_time_ms=25,
+-            repeat_time_ms=repeat_ms,
+-        )
+-    return {
+-        "samples_us": [sample * 1000 for sample in samples],
+-        "median_us": statistics.median(samples) * 1000,
+-        "p10_us": sorted(samples)[int(0.1 * (len(samples) - 1))] * 1000,
+-        "p90_us": sorted(samples)[int(0.9 * (len(samples) - 1))] * 1000,
+-        "graph_replays": len(samples),
+-        "calls_per_graph": calls if timer is None or not cold else None,
+-        "rotations": rotations,
+-    }
+-
+-
+-def main():
+-    parser = argparse.ArgumentParser(description=__doc__)
+-    parser.add_argument("--tokens", default="128,513,8192")
+-    parser.add_argument("--hidden", default="6144")
+-    parser.add_argument("--dtypes", default="bfloat16")
+-    parser.add_argument("--warps", default="default")
+-    parser.add_argument("--two-stage", action="store_true")
+-    parser.add_argument("--two-warps", type=int, default=8)
+-    parser.add_argument("--cache", choices=("cold", "hot", "both"), default="cold")
+-    parser.add_argument("--magnitude", type=float, default=1.7)
+-    parser.add_argument("--hc-eps", type=float, default=2e-6)
+-    parser.add_argument("--warmup", type=int, default=30)
+-    parser.add_argument("--rounds", type=int, default=3)
+-    parser.add_argument("--repeat-ms", type=int, default=100)
+-    parser.add_argument("--output", type=Path, required=True)
+-    opt = parser.parse_args()
+-    if opt.warmup < 0 or min(opt.rounds, opt.repeat_ms) < 1:
+-        parser.error("warmup >= 0 and positive rounds/repeat-ms required")
+-    opt.output.parent.mkdir(parents=True, exist_ok=True)
+-    torch.backends.cuda.matmul.allow_tf32 = False
+-    timer_name, timer = get_timer()
+-    doc = dict(
+-        metadata=dict(
+-            options=vars(opt),
+-            source_sha256={
+-                str(p): hashlib.sha256(p.read_bytes()).hexdigest()
+-                for p in (
+-                    Path(__file__),
+-                    Path("lab/ihc_fusion/kernels/fused_post_pre.py"),
+-                    Path("lab/ihc_fusion/kernels/decode_two_stage.py"),
+-                    Path("tests/models/test_hyv4_ihc_fusion.py"),
+-                )
+-            },
+-            command=sys.argv,
+-            gpu=torch.cuda.get_device_name(),
+-            gpu_selection=os.getenv("CUDA_VISIBLE_DEVICES"),
+-            torch=torch.__version__,
+-            triton=triton.__version__,
+-            cuda=torch.version.cuda,
+-            official=provenance(),
+-            timer=timer_name,
+-            hot_timer="CUDA Events + CUDA Graph, 32 calls, hot L2",
+-            graph_warmup_ms=25,
+-            seed=20261021,
+-            allocation_in_timing=False,
+-            commit=subprocess.check_output(
+-                ["git", "rev-parse", "HEAD"], text=True
+-            ).strip(),
+-        ),
+-        rows=[],
+-    )
+-    functions = {"official": baseline_call}
+-    for warp in opt.warps.split(","):
+-        functions["single_" + warp] = functools.partial(
+-            fused_call, num_warps=None if warp == "default" else int(warp)
+-        )
+-    if opt.two_stage:
+-        functions["two"] = functools.partial(two_call, num_warps=opt.two_warps)
+-    for dtype in opt.dtypes.split(","):
+-        for d in map(int, opt.hidden.split(",")):
+-            for n in map(int, opt.tokens.split(",")):
+-                args = (
+-                    *make_case(n, d, DTYPES[dtype])[:6],
+-                    opt.magnitude,
+-                    opt.hc_eps,
+-                    1e-5,
+-                )
+-                official, golden = official_post_pre(*args), torch_post_pre(*args)
+-                check_outputs(official, golden)
+-                inputs, errors = {}, {}
+-                for name, fn in functions.items():
+-                    out = tuple(torch.empty_like(t) for t in official)
+-                    partial = torch.empty(
+-                        (n, triton.cdiv(4 * d, 1024), 9), device="cuda"
+-                    )
+-                    inputs[name] = (*args, out, partial)
+-                    fn(*inputs[name])
+-                    if name == "official":
+-                        for a, b in zip(out, official):
+-                            torch.testing.assert_close(a, b, rtol=0, atol=0)
+-                    errors[name] = dict(
+-                        golden=check_outputs(out, golden),
+-                        official=check_outputs(out, official),
+-                    )
+-                    for _ in range(opt.warmup):
+-                        fn(*inputs[name])
+-                torch.cuda.synchronize()
+-                for cache in ["cold", "hot"] if opt.cache == "both" else [opt.cache]:
+-                    timings = {name: [] for name in functions}
+-                    for step in range(opt.rounds):
+-                        names = list(functions)
+-                        offset = step % len(names)
+-                        for name in names[offset:] + names[:offset]:
+-                            timings[name].append(
+-                                time_call(
+-                                    functions[name],
+-                                    inputs[name],
+-                                    opt.repeat_ms,
+-                                    timer,
+-                                    cold=cache == "cold",
+-                                )
+-                            )
+-                    medians = {
+-                        name: statistics.median(t["median_us"] for t in samples)
+-                        for name, samples in timings.items()
+-                    }
+-                    doc["rows"].append(
+-                        dict(
+-                            tokens=n,
+-                            hidden=d,
+-                            dtype=dtype,
+-                            cache=cache,
+-                            timings=timings,
+-                            errors=errors,
+-                            median_us=medians,
+-                        )
+-                    )
+-                    for name, us in medians.items():
+-                        print(
+-                            f"N={n} D={d} {dtype} {cache} {name}: {us:.3f} us; "
+-                            f"speedup={medians['official'] / us:.3f}x",
+-                            flush=True,
+-                        )
+-                    opt.output.write_text(json.dumps(doc, indent=2, default=str) + "\n")
+-                del inputs, args, official, golden, out, partial
+-                torch.cuda.empty_cache()
+-
+-
+-if __name__ == "__main__":
+-    main()
+diff --git a/lab/ihc_fusion/benchmarks/tp4_validation/analyze_perf.py b/lab/ihc_fusion/benchmarks/tp4_validation/analyze_perf.py
+deleted file mode 100644
+index b78aa18390..0000000000
+--- a/lab/ihc_fusion/benchmarks/tp4_validation/analyze_perf.py
++++ /dev/null
+@@ -1,216 +0,0 @@
+-# SPDX-License-Identifier: Apache-2.0
+-# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+-
+-"""Analyze saved TP4/TP8 timing and traces using only the standard library."""
+-
+-import argparse
+-import csv
+-import json
+-import math
+-import statistics
+-from collections import Counter
+-from itertools import combinations
+-from pathlib import Path
+-
+-
+-def write(output, name, obj):
+-    with (output / name).open("w") as f:
+-        json.dump(obj, f, indent=2)
+-
+-
+-def csvwrite(output, name, rows):
+-    if not rows:
+-        return
+-    with (output / name).open("w", newline="") as f:
+-        writer = csv.DictWriter(f, fieldnames=list(rows[0]))
+-        writer.writeheader()
+-        writer.writerows(rows)
+-
+-
+-def stats(vals):
+-    vals = sorted(vals)
+-
+-    def pct(q):
+-        p = (len(vals) - 1) * q
+-        i = int(p)
+-        return vals[i] + (vals[min(i + 1, len(vals) - 1)] - vals[i]) * (p - i)
+-
+-    return dict(
+-        median=statistics.median(vals),
+-        p10=pct(0.1),
+-        p90=pct(0.9),
+-        min=min(vals),
+-        max=max(vals),
+-        n=len(vals),
+-    )
+-
+-
+-def trace(path):
+-    events = json.loads(path.read_text())["traceEvents"]
+-    scopes = [
+-        e
+-        for e in events
+-        if e.get("cat") == "user_annotation"
+-        and e["name"] in ("TP4/forward", "TP8/forward")
+-        and "dur" in e
+-    ]
+-    assert scopes, (path, "Missing Forward scope")
+-    launches = {
+-        e["args"]["correlation"]
+-        for e in events
+-        if e.get("cat") in ("cuda_runtime", "cuda_driver")
+-        and "correlation" in e.get("args", {})
+-        and any(
+-            t["pid"] == e["pid"]
+-            and t["tid"] == e["tid"]
+-            and t["ts"] <= e["ts"] < t["ts"] + t["dur"]
+-            for t in scopes
+-        )
+-    }
+-    kernels = [
+-        e
+-        for e in events
+-        if e.get("cat") == "kernel" and e.get("args", {}).get("correlation") in launches
+-    ]
+-    assert kernels, (path, "No GPU kernels correlated to Forward")
+-    return dict(counts=dict(Counter(e["name"] for e in kernels)))
+-
+-
+-def analyze(run, output_dir=None):
+-    raw = Path(run) / "raw"
+-    output = Path(output_dir) if output_dir else raw
+-    output.mkdir(parents=True, exist_ok=True)
+-    workers = json.loads((raw / "initial_workers.json").read_text())
+-    tp = workers[0]["world_size"]
+-    ranks = list(range(tp))
+-    assert sorted(w["rank"] for w in workers) == ranks
+-    assert all(w["world_size"] == tp for w in workers)
+-    layers = [p["layer"] for p in workers[0]["partitions"]]
+-    assert layers and all(
+-        [p["layer"] for p in w["partitions"]] == layers for w in workers
+-    )
+-    warm = json.loads((raw / "warm_original.json").read_text())["workers"]
+-    assert sorted(w["rank"] for w in warm) == ranks
+-    n = warm[0]["records"][0]["shape"][0]
+-    assert all(len(w["records"]) == 1 and w["records"][0]["shape"] == [n] for w in warm)
+-    config_path = raw / "run_config.json"
+-    config = json.loads(config_path.read_text()) if config_path.exists() else None
+-    modes = config["options"]["modes"] if config else ["original", "intra", "cross"]
+-    with (raw / "timing.csv").open() as f:
+-        reader = csv.DictReader(f)
+-        assert {k for k in reader.fieldnames if k.startswith("rank")} == {
+-            f"rank{i}_ms" for i in ranks
+-        }
+-        rows = list(reader)
+-    rounds = sorted({int(r["round"]) for r in rows})
+-    assert rounds and rounds == list(range(len(rounds))), "Missing timing rounds"
+-    if config:
+-        assert config["llm"]["tensor_parallel_size"] == tp
+-        assert config["options"]["tokens"] == n
+-        assert len(rounds) == config["options"]["rounds"]
+-    else:
+-        # Both legacy producers fixed nine rounds without recording this setting.
+-        assert len(rounds) == 9, "Incomplete legacy run (expected nine rounds)"
+-    for row in rows:
+-        times = [float(row[f"rank{i}_ms"]) for i in ranks]
+-        assert all(math.isfinite(ms) and ms > 0 for ms in times), row
+-        assert math.isclose(float(row["forward_max_ms"]), max(times)), row
+-    for i in rounds:
+-        assert sorted(r["mode"] for r in rows if int(r["round"]) == i) == sorted(
+-            modes
+-        ), i
+-    timing = {
+-        m: stats([float(r["forward_max_ms"]) for r in rows if r["mode"] == m])
+-        for m in modes
+-    }
+-    paired = {}
+-    for a, b in combinations(modes, 2):
+-        vals, deltas = [], []
+-        for i in rounds:
+-            values = {
+-                r["mode"]: float(r["forward_max_ms"])
+-                for r in rows
+-                if int(r["round"]) == i
+-            }
+-            vals.append(values[a] / values[b])
+-            deltas.append(values[a] - values[b])
+-        paired[a + "/" + b] = {"speedup": stats(vals), "saved_ms": stats(deltas)}
+-    write(output, "timing_summary.json", {"forward": timing, "paired": paired})
+-    print("Mode       median ms     P10 ms     P90 ms", flush=True)
+-    for mode, values in timing.items():
+-        print(
+-            f"{mode:10s} {values['median']:9.3f} "
+-            f"{values['p10']:10.3f} {values['p90']:10.3f}",
+-            flush=True,
+-        )
+-    for pair, values in paired.items():
+-        print(
+-            f"{pair}: paired median {values['speedup']['median']:.4f}x, "
+-            f"saved {values['saved_ms']['median']:.3f} ms",
+-            flush=True,
+-        )
+-    paths = sorted(raw.glob("*.trace.json"))
+-    if paths:
+-        assert {p.name for p in paths} == {
+-            f"{mode}_rank{rank}.trace.json" for mode in modes for rank in ranks
+-        }, "Missing or unexpected rank/mode traces"
+-    profiles = {p.stem.replace(".trace", ""): trace(p) for p in paths}
+-    for mode in modes if profiles else []:
+-        fused = {"original": 0, "intra": len(layers), "cross": 2 * len(layers) - 1}[
+-            mode
+-        ]
+-        if (
+-            not 512 <= n <= 8192
+-            or not all(f["intra"] for f in workers[0]["flags"])
+-            or (
+-                config
+-                and (
+-                    not config["llm"]["enforce_eager"]
+-                    or config["llm"].get("dtype", "bfloat16") != "bfloat16"
+-                )
+-            )
+-        ):
+-            fused = 0
+-        for rank in ranks:
+-            counts = profiles[f"{mode}_rank{rank}"]["counts"]
+-            assert counts.get("_fused_post_pre", 0) == fused, (mode, rank, counts)
+-            for name in ("_ihc_pre_stage1", "_ihc_pre_stage2", "_ihc_post_kernel"):
+-                assert counts.get(name, 0) == 2 * len(layers) - fused, (
+-                    mode,
+-                    rank,
+-                    counts,
+-                )
+-    if profiles:
+-        write(output, "activity_summary.json", profiles)
+-    metadata = dict(
+-        world_size=tp,
+-        layers=layers,
+-        tokens=n,
+-        rounds=len(rounds),
+-        modes=modes,
+-        run_config=config,
+-    )
+-    metadata["kernel_hit_verified"] = bool(profiles)
+-    write(output, "analysis_metadata.json", metadata)
+-    for name, profile in profiles.items():
+-        print(
+-            name,
+-            {
+-                k: v
+-                for k, v in profile["counts"].items()
+-                if "ihc" in k or "fused_post_pre" in k
+-            },
+-        )
+-    return dict(metadata=metadata, forward=timing, paired=paired)
+-
+-
+-def main(argv=None):
+-    parser = argparse.ArgumentParser(description=__doc__)
+-    parser.add_argument("run", type=Path, help="Saved run directory containing raw/")
+-    parser.add_argument("--output-dir", type=Path, help="Directory for derived results")
+-    args = parser.parse_args(argv)
+-    analyze(args.run, args.output_dir)
+-
+-
+-if __name__ == "__main__":
+-    main()
+diff --git a/lab/ihc_fusion/benchmarks/tp4_validation/benchmark.py b/lab/ihc_fusion/benchmarks/tp4_validation/benchmark.py
+deleted file mode 100644
+index e6dce09afb..0000000000
+--- a/lab/ihc_fusion/benchmarks/tp4_validation/benchmark.py
++++ /dev/null
+@@ -1,9 +0,0 @@
+-# SPDX-License-Identifier: Apache-2.0
+-# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+-
+-"""Compatibility entrypoint; model benchmarking is shared with TP8."""
+-
+-from lab.ihc_fusion.benchmarks.tp8_validation.benchmark import main
+-
+-if __name__ == "__main__":
+-    main()
+diff --git a/lab/ihc_fusion/benchmarks/tp4_validation/inspect_environment.py b/lab/ihc_fusion/benchmarks/tp4_validation/inspect_environment.py
+deleted file mode 100644
+index 9db8cd62b3..0000000000
+--- a/lab/ihc_fusion/benchmarks/tp4_validation/inspect_environment.py
++++ /dev/null
+@@ -1,9 +0,0 @@
+-# SPDX-License-Identifier: Apache-2.0
+-# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+-
+-"""Compatibility entrypoint for the shared environment inspection."""
+-
+-from lab.ihc_fusion.benchmarks.tp8_validation.inspect_environment import main
+-
+-if __name__ == "__main__":
+-    main()
+diff --git a/lab/ihc_fusion/benchmarks/tp4_validation/run.sh b/lab/ihc_fusion/benchmarks/tp4_validation/run.sh
+deleted file mode 100644
+index e95804426d..0000000000
+--- a/lab/ihc_fusion/benchmarks/tp4_validation/run.sh
++++ /dev/null
+@@ -1,14 +0,0 @@
+-#!/usr/bin/env bash
+-set -euo pipefail
+-HARNESS=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+-export HY4_TP8_RUN=${HY4_TP8_RUN:-${HY4_TP4_RUN:?Set HY4_TP8_RUN}}
+-export HY4_TP8_CHECKPOINT=${HY4_TP8_CHECKPOINT:-${HY4_TP4_CHECKPOINT:-}}
+-ENTRY=$(basename -- "${1:?Use validate.py, benchmark.py or analyze_perf.py}")
+-shift
+-if [[ "$ENTRY" == analyze_perf.py ]]; then
+-  REPO=$(cd -- "$HARNESS/../../../.." && pwd)
+-  SAVED=$HY4_TP8_RUN
+-  [[ ! -d "$SAVED/performance/raw" ]] || SAVED="$SAVED/performance"
+-  exec "${HY4_TP8_PYTHON:-$REPO/.venv/bin/python}" -S "$HARNESS/analyze_perf.py" "$SAVED" "$@"
+-fi
+-exec bash "$HARNESS/../tp8_validation/run.sh" "$ENTRY" "$@"
+diff --git a/lab/ihc_fusion/benchmarks/tp4_validation/validate.py b/lab/ihc_fusion/benchmarks/tp4_validation/validate.py
+deleted file mode 100644
+index e589d8439a..0000000000
+--- a/lab/ihc_fusion/benchmarks/tp4_validation/validate.py
++++ /dev/null
+@@ -1,11 +0,0 @@
+-# SPDX-License-Identifier: Apache-2.0
+-# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+-
+-"""Compatibility entrypoint; correctness is shared with TP8."""
+-
+-import sys
+-
+-from lab.ihc_fusion.benchmarks.tp8_validation.validate import main
+-
+-if __name__ == "__main__":
+-    sys.exit(main())
+diff --git a/lab/ihc_fusion/benchmarks/tp8_validation/analyze_perf.py b/lab/ihc_fusion/benchmarks/tp8_validation/analyze_perf.py
+deleted file mode 100644
+index ccdecac897..0000000000
+--- a/lab/ihc_fusion/benchmarks/tp8_validation/analyze_perf.py
++++ /dev/null
+@@ -1,10 +0,0 @@
+-"""Compatibility entrypoint for the shared, CPU-only TP trace analyzer."""
+-
+-import runpy
+-from pathlib import Path
+-
+-if __name__ == "__main__":
+-    runpy.run_path(
+-        str(Path(__file__).resolve().parents[1] / "tp4_validation/analyze_perf.py"),
+-        run_name="__main__",
+-    )
+diff --git a/lab/ihc_fusion/benchmarks/tp8_validation/benchmark.py b/lab/ihc_fusion/benchmarks/tp8_validation/benchmark.py
+deleted file mode 100644
+index f99efd1b86..0000000000
+--- a/lab/ihc_fusion/benchmarks/tp8_validation/benchmark.py
++++ /dev/null
+@@ -1,146 +0,0 @@
+-# SPDX-License-Identifier: Apache-2.0
+-# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+-
+-"""Independent paired HY4 timing with immediate analysis and optional profiling."""
+-
+-import csv
+-import functools
+-import time
+-
+-from lab.ihc_fusion.benchmarks.tp4_validation.analyze_perf import analyze, write
+-from lab.ihc_fusion.benchmarks.tp8_validation.validate import (
+-    parse_args,
+-    prepare_run,
+-    require_ranks,
+-)
+-
+-
+-def main():
+-    options = parse_args(benchmark=True)
+-    R, kwargs = prepare_run(options, "performance")
+-    require = functools.partial(require_ranks, tp_size=options.tp_size)
+-    save = functools.partial(write, R / "raw")
+-    import torch
+-    import triton
+-
+-    import vllm
+-    from lab.ihc_fusion.benchmarks.tp8_validation import perf_workers, workers
+-    from vllm import LLM, SamplingParams
+-
+-    save(
+-        "versions.json",
+-        dict(
+-            torch=torch.__version__,
+-            triton=triton.__version__,
+-            vllm=vllm.__version__,
+-            cuda=torch.version.cuda,
+-        ),
+-    )
+-    print(
+-        f"Initialize TP{options.tp_size} eager benchmark; "
+-        "numerical acceptance is separate.",
+-        flush=True,
+-    )
+-    llm = LLM(**kwargs)
+-    initial = llm.apply_model(workers.status)
+-    require(initial)
+-    save("initial_workers.json", initial)
+-    parallel = llm.apply_model(perf_workers.install)
+-    require(parallel)
+-    save("parallelism.json", parallel)
+-    prompt = [{"prompt_token_ids": [100 + i % 197 for i in range(options.tokens)]}]
+-    params = SamplingParams(temperature=0, max_tokens=1, seed=7)
+-
+-    def generate():
+-        return llm.generate(prompt, params, use_tqdm=False)[0].outputs[0].token_ids
+-
+-    flags = []
+-
+-    def mode(name):
+-        states = llm.apply_model(functools.partial(workers.set_mode, name=name))
+-        require(states, name)
+-        flags.append(
+-            {
+-                "mode": name,
+-                "workers": [{"rank": s["rank"], "flags": s["flags"]} for s in states],
+-            }
+-        )
+-
+-    for name in options.modes:
+-        mode(name)
+-        for _ in range(options.warmup):
+-            generate()
+-        llm.apply_model(perf_workers.arm)
+-        tokens = generate()
+-        values = llm.apply_model(
+-            functools.partial(perf_workers.read, check_finite=True)
+-        )
+-        require(values)
+-        save(f"warm_{name}.json", dict(mode=name, tokens=tokens, workers=values))
+-        assert all(x["finite"] for x in values), "Nonfinite model output"
+-        print(f"E02 warmed {name}; finite on all ranks; tokens={tokens}")
+-
+-    with (R / "raw/timing.csv").open("x", newline="") as f:
+-        fields = [
+-            "round",
+-            "order",
+-            "mode",
+-            *[f"rank{i}_ms" for i in range(options.tp_size)],
+-            "forward_max_ms",
+-            "generate_wall_ms",
+-            "tokens",
+-        ]
+-        writer = csv.DictWriter(f, fieldnames=fields)
+-        writer.writeheader()
+-        for round_id in range(options.rounds):
+-            offset = round_id % len(options.modes)
+-            order_modes = options.modes[offset:] + options.modes[:offset]
+-            for order, name in enumerate(order_modes):
+-                mode(name)
+-                generate()  # one untimed settling request after each mode switch
+-                llm.apply_model(perf_workers.arm)
+-                begin = time.perf_counter()
+-                tokens = generate()
+-                wall = (time.perf_counter() - begin) * 1000
+-                values = llm.apply_model(perf_workers.read)
+-                require(values)
+-                assert all(
+-                    len(x["records"]) == 1
+-                    and x["records"][0]["shape"] == [options.tokens]
+-                    for x in values
+-                ), values
+-                row = dict(
+-                    round=round_id,
+-                    order=order,
+-                    mode=name,
+-                    generate_wall_ms=wall,
+-                    tokens=str(tokens),
+-                )
+-                for value in values:
+-                    row[f"rank{value['rank']}_ms"] = value["records"][0]["ms"]
+-                row["forward_max_ms"] = max(
+-                    row[f"rank{i}_ms"] for i in range(options.tp_size)
+-                )
+-                writer.writerow(row)
+-                f.flush()
+-            print(f"E03 paired round {round_id + 1}/{options.rounds} persisted")
+-    save("mode_checks.json", flags)
+-    analyze(R)
+-    if not options.profile:
+-        return
+-    for name in options.modes:
+-        mode(name)
+-        for _ in range(3):
+-            generate()
+-        llm.apply_model(functools.partial(perf_workers.start_profile, mode=name))
+-        tokens = generate()
+-        traces = llm.apply_model(perf_workers.stop_profile)
+-        require(traces)
+-        save(f"profile_{name}.json", {"tokens": tokens, "workers": traces})
+-        print(f"E04 {name}: {options.tp_size} rank activity traces saved")
+-    save("profile_mode_checks.json", flags[-len(options.modes) :])
+-    analyze(R)
+-
+-
+-if __name__ == "__main__":
+-    main()
+diff --git a/lab/ihc_fusion/benchmarks/tp8_validation/bootstrap/sitecustomize.py b/lab/ihc_fusion/benchmarks/tp8_validation/bootstrap/sitecustomize.py
+deleted file mode 100644
+index aba60268ec..0000000000
+--- a/lab/ihc_fusion/benchmarks/tp8_validation/bootstrap/sitecustomize.py
++++ /dev/null
+@@ -1,34 +0,0 @@
+-"""Use checkout Python and existing wheel extensions for this TP8 harness only."""
+-
+-import importlib.metadata
+-import importlib.util
+-import os
+-import sys
+-import traceback
+-from pathlib import Path
+-
+-try:
+-    import torch  # noqa: F401 -- load libtorch before the compiled extensions
+-
+-    import vllm
+-
+-    source = Path(__file__).resolve().parents[5]
+-    installed = Path(importlib.metadata.distribution("vllm").locate_file("vllm"))
+-    assert Path(vllm.__file__).resolve() == source / "vllm/__init__.py"
+-    assert installed.resolve() != source / "vllm"
+-    vllm.__path__.append(str(installed))
+-    for name in ("_vllm_fa2_C", "_vllm_fa3_C"):
+-        candidates = list((installed / "vllm_flash_attn").glob(name + "*.so"))
+-        assert len(candidates) == 1, (name, candidates)
+-        qualified = "vllm.vllm_flash_attn." + name
+-        spec = importlib.util.spec_from_file_location(qualified, candidates[0])
+-        module = importlib.util.module_from_spec(spec)
+-        sys.modules[qualified] = module
+-        spec.loader.exec_module(module)
+-    import vllm.third_party.flashmla
+-
+-    vllm.third_party.flashmla.__path__.append(str(installed / "third_party/flashmla"))
+-    vllm.third_party.__path__.append(str(installed / "third_party"))
+-except Exception:
+-    traceback.print_exc()
+-    os._exit(78)
+diff --git a/lab/ihc_fusion/benchmarks/tp8_validation/check_gpus.py b/lab/ihc_fusion/benchmarks/tp8_validation/check_gpus.py
+deleted file mode 100644
+index 85df72fda2..0000000000
+--- a/lab/ihc_fusion/benchmarks/tp8_validation/check_gpus.py
++++ /dev/null
+@@ -1,77 +0,0 @@
+-# SPDX-License-Identifier: Apache-2.0
+-# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+-
+-"""Fail before CUDA initialization unless the selected GPUs are idle."""
+-
+-import csv
+-import datetime
+-import io
+-import json
+-import os
+-import subprocess
+-from pathlib import Path
+-
+-
+-def check(selected, gpus, processes):
+-    if not selected or len(set(selected)) != len(selected):
+-        raise ValueError("HY4_TP8_GPUS must contain distinct physical indices")
+-    by_index = {g["index"]: g for g in gpus}
+-    errors = []
+-    for index in selected:
+-        if index not in by_index:
+-            errors.append(f"GPU {index}: missing")
+-            continue
+-        gpu = by_index[index]
+-        active = [p for p in processes if p["gpu_uuid"] == gpu["uuid"]]
+-        if active or int(gpu["memory.used"]) > 512 or int(gpu["utilization.gpu"]) > 0:
+-            errors.append(
+-                f"GPU {index}: busy, memory={gpu['memory.used']} MiB, "
+-                f"utilization={gpu['utilization.gpu']}%, "
+-                f"PIDs={[p['pid'] for p in active]}"
+-            )
+-    return errors
+-
+-
+-def query(kind, fields):
+-    output = subprocess.check_output(
+-        [
+-            "nvidia-smi",
+-            f"--query-{kind}={','.join(fields)}",
+-            "--format=csv,noheader,nounits",
+-        ],
+-        text=True,
+-    )
+-    return [
+-        dict(zip(fields, (s.strip() for s in row), strict=True))
+-        for row in csv.reader(io.StringIO(output))
+-        if row
+-    ]
+-
+-
+-def main():
+-    selected = os.environ["HY4_TP8_GPUS"].split(",")
+-    gpus = query(
+-        "gpu",
+-        ("index", "uuid", "name", "memory.total", "memory.used", "utilization.gpu"),
+-    )
+-    processes = query("compute-apps", ("gpu_uuid", "pid", "used_gpu_memory"))
+-    errors = check(selected, gpus, processes)
+-    stamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%dT%H%M%S.%fZ")
+-    report = dict(
+-        time=stamp,
+-        selected=selected,
+-        gpus=gpus,
+-        processes=processes,
+-        errors=errors,
+-        passed=not errors,
+-    )
+-    path = Path(os.environ["HY4_TP8_RUN"]) / "environment" / f"gpu_gate_{stamp}.json"
+-    with path.open("x") as f:
+-        json.dump(report, f, indent=2)
+-    print(json.dumps(report, indent=2), flush=True)
+-    if errors:
+-        raise SystemExit("BLOCKED_GPU_AVAILABILITY: " + "; ".join(errors))
+-
+-
+-if __name__ == "__main__":
+-    main()
+diff --git a/lab/ihc_fusion/benchmarks/tp8_validation/decode_profile.py b/lab/ihc_fusion/benchmarks/tp8_validation/decode_profile.py
+deleted file mode 100644
+index 1b2e2687d5..0000000000
+--- a/lab/ihc_fusion/benchmarks/tp8_validation/decode_profile.py
++++ /dev/null
+@@ -1,91 +0,0 @@
+-# SPDX-License-Identifier: Apache-2.0
+-# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+-
+-"""Profile HY4 decode GPU kernels on the three-layer checkpoint."""
+-
+-import argparse
+-import os
+-from pathlib import Path
+-from types import SimpleNamespace
+-
+-from lab.ihc_fusion.benchmarks.tp8_validation.validate import model_options
+-from vllm import LLM, SamplingParams
+-from vllm.config import ProfilerConfig
+-
+-
+-def main():
+-    parser = argparse.ArgumentParser()
+-    parser.add_argument("--tp-size", type=int, choices=(4, 8), default=4)
+-    parser.add_argument("--context-len", type=int, default=512)
+-    parser.add_argument("--decode-steps", type=int, default=32)
+-    parser.add_argument("--batch-size", type=int, default=1)
+-    parser.add_argument("--warmup", type=int, default=2)
+-    args = parser.parse_args()
+-
+-    assert args.context_len > 0
+-    assert args.decode_steps >= 2
+-    assert args.batch_size > 0
+-    assert args.warmup >= 0
+-    assert len(os.environ["HY4_TP8_GPUS"].split(",")) == args.tp_size
+-
+-    trace_dir = Path(os.environ["HY4_TP8_RUN"]) / "decode_profile" / "traces"
+-    trace_dir.mkdir(parents=True, exist_ok=True)
+-
+-    max_len = args.context_len + args.decode_steps + 256
+-    token_budget = max(max_len, args.context_len * args.batch_size)
+-
+-    options = model_options(SimpleNamespace(tp_size=args.tp_size, tokens=token_budget))
+-    options.update(
+-        max_model_len=max_len,
+-        max_num_batched_tokens=token_budget,
+-        max_num_seqs=max(4, args.batch_size),
+-        hf_overrides={
+-            "enable_ihc_post_pre_fusion": False,
+-            "enable_ihc_cross_layer_fusion": False,
+-        },
+-        profiler_config=ProfilerConfig(
+-            profiler="torch",
+-            torch_profiler_dir=str(trace_dir),
+-            torch_profiler_with_stack=False,
+-            ignore_frontend=True,
+-            delay_iterations=1,
+-            max_iterations=min(16, args.decode_steps - 1),
+-        ),
+-    )
+-
+-    llm = LLM(**options)
+-
+-    prompts = [
+-        {
+-            "prompt_token_ids": [
+-                100 + (i + j * 37) % 197 for i in range(args.context_len)
+-            ]
+-        }
+-        for j in range(args.batch_size)
+-    ]
+-
+-    sampling = SamplingParams(
+-        temperature=0,
+-        max_tokens=args.decode_steps,
+-        ignore_eos=True,
+-    )
+-
+-    for _ in range(args.warmup):
+-        llm.generate(prompts, sampling, use_tqdm=False)
+-
+-    llm.start_profile()
+-    try:
+-        outputs = llm.generate(prompts, sampling, use_tqdm=False)
+-    finally:
+-        llm.stop_profile()
+-
+-    lengths = [len(o.outputs[0].token_ids) for o in outputs]
+-    assert all(n == args.decode_steps for n in lengths), lengths
+-
+-    print("DECODE_PROFILE_COMPLETE")
+-    print("Generated tokens:", lengths)
+-    print("Trace directory:", trace_dir)
+-
+-
+-if __name__ == "__main__":
+-    main()
+diff --git a/lab/ihc_fusion/benchmarks/tp8_validation/inspect_environment.py b/lab/ihc_fusion/benchmarks/tp8_validation/inspect_environment.py
+deleted file mode 100644
+index b83f9fd1c7..0000000000
+--- a/lab/ihc_fusion/benchmarks/tp8_validation/inspect_environment.py
++++ /dev/null
+@@ -1,59 +0,0 @@
+-# SPDX-License-Identifier: Apache-2.0
+-# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+-
+-"""Record checkpoint layout and the environment without model initialization."""
+-
+-import hashlib
+-import importlib.metadata
+-import json
+-import os
+-import subprocess
+-import sys
+-from pathlib import Path
+-
+-from safetensors import safe_open
+-
+-import vllm
+-from lab.ihc_fusion.benchmarks.tp4_validation.analyze_perf import write
+-
+-
+-def main():
+-    checkpoint = Path(os.environ["HY4_TP8_CHECKPOINT"]).resolve()
+-    config = checkpoint / "config.json"
+-    shards = sorted(checkpoint.glob("*.safetensors"))
+-    if not shards:
+-        raise ValueError(f"No safetensors weights in {checkpoint}")
+-    shapes = {}
+-    for shard in shards:
+-        with safe_open(shard, framework="pt", device="cpu") as tensors:
+-            for name in tensors.keys():  # noqa: SIM118 (safe_open is not iterable)
+-                item = tensors.get_slice(name)
+-                shapes[name] = dict(shape=item.get_shape(), dtype=item.get_dtype())
+-    versions = {}
+-    for name in ("torch", "triton", "vllm", "humming-kernels", "flashinfer-python"):
+-        try:
+-            versions[name] = importlib.metadata.version(name)
+-        except importlib.metadata.PackageNotFoundError:
+-            versions[name] = None
+-    report = dict(
+-        checkpoint=str(checkpoint),
+-        config=json.loads(config.read_text()),
+-        config_sha256=hashlib.sha256(config.read_bytes()).hexdigest(),
+-        weight_bytes=sum(p.stat().st_size for p in shards),
+-        weight_layout=shapes,
+-        python=sys.executable,
+-        vllm_source=vllm.__file__,
+-        versions=versions,
+-        selected_gpus=os.environ["HY4_TP8_GPUS"].split(","),
+-        head=subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+-        status=subprocess.check_output(["git", "status", "--short"], text=True),
+-        topology=subprocess.check_output(["nvidia-smi", "topo", "-m"], text=True),
+-    )
+-    raw = Path(os.environ["HY4_TP8_RUN"]) / "environment/raw"
+-    raw.mkdir(parents=True, exist_ok=True)
+-    write(raw, "environment.json", report)
+-    print(f"Environment saved to {raw}; {len(shards)} shards, {len(shapes)} tensors")
+-
+-
+-if __name__ == "__main__":
+-    main()
+diff --git a/lab/ihc_fusion/benchmarks/tp8_validation/perf_workers.py b/lab/ihc_fusion/benchmarks/tp8_validation/perf_workers.py
+deleted file mode 100644
+index 8d2100ceac..0000000000
+--- a/lab/ihc_fusion/benchmarks/tp8_validation/perf_workers.py
++++ /dev/null
+@@ -1,111 +0,0 @@
+-# SPDX-License-Identifier: Apache-2.0
+-# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+-
+-"""Instance-local timing and profiling for the isolated TP8 experiment."""
+-
+-import os
+-from pathlib import Path
+-
+-import torch
+-
+-from vllm.distributed import get_tp_group
+-
+-
+-def install(model):
+-    state = {"phase": "off", "records": [], "handles": [], "profile_handles": []}
+-    model._tp8_perf = state
+-
+-    def before(module, args, kwargs):
+-        if state["phase"] != "timing":
+-            return
+-        torch.distributed.barrier(group=get_tp_group().device_group)
+-        start = torch.cuda.Event(enable_timing=True)
+-        end = torch.cuda.Event(enable_timing=True)
+-        value = kwargs.get("input_ids", args[0] if args else None)
+-        state["records"].append((start, end, list(value.shape)))
+-        start.record()
+-
+-    def after(module, args, kwargs, output):
+-        if state["phase"] == "timing":
+-            state["records"][-1][1].record()
+-            state["output"] = output
+-
+-    state["handles"] = [
+-        model.register_forward_pre_hook(before, with_kwargs=True),
+-        model.register_forward_hook(after, with_kwargs=True),
+-    ]
+-    return dict(rank=get_tp_group().rank_in_group, world_size=get_tp_group().world_size)
+-
+-
+-def arm(model):
+-    state = model._tp8_perf
+-    state.update(phase="timing", records=[], output=None)
+-    return get_tp_group().rank_in_group
+-
+-
+-def read(model, check_finite=False):
+-    state = model._tp8_perf
+-    state["phase"] = "off"
+-    torch.cuda.synchronize()
+-    out = {
+-        "rank": get_tp_group().rank_in_group,
+-        "world_size": get_tp_group().world_size,
+-        "records": [
+-            {"ms": a.elapsed_time(b), "shape": shape}
+-            for a, b, shape in state["records"]
+-        ],
+-    }
+-    if check_finite:
+-        out["finite"] = bool(torch.isfinite(state["output"]).all().item())
+-    state["output"] = None
+-    return out
+-
+-
+-def start_profile(model, mode):
+-    state = model._tp8_perf
+-    state["phase"] = "profile"
+-    state["mode"] = mode
+-
+-    def before(module, args):
+-        state["scope"] = torch.profiler.record_function("TP8/forward")
+-        state["scope"].__enter__()
+-
+-    def after(module, args, result):
+-        state["scope"].__exit__(None, None, None)
+-
+-    state["profile_handles"] = [
+-        model.register_forward_pre_hook(before),
+-        model.register_forward_hook(after),
+-    ]
+-    torch.cuda.synchronize()
+-    state["profiler"] = torch.profiler.profile(
+-        activities=[
+-            torch.profiler.ProfilerActivity.CPU,
+-            torch.profiler.ProfilerActivity.CUDA,
+-        ]
+-    )
+-    state["profiler"].start()
+-    return get_tp_group().rank_in_group
+-
+-
+-def stop_profile(model):
+-    state = model._tp8_perf
+-    torch.cuda.synchronize()
+-    state["profiler"].stop()
+-    rank = get_tp_group().rank_in_group
+-    path = (
+-        Path(os.environ["HY4_TP8_RUN"])
+-        / "performance"
+-        / "raw"
+-        / f"{state['mode']}_rank{rank}.trace.json"
+-    )
+-    state["profiler"].export_chrome_trace(str(path))
+-    for handle in state["profile_handles"]:
+-        handle.remove()
+-    state["profile_handles"] = []
+-    state["phase"] = "off"
+-    return {
+-        "rank": rank,
+-        "world_size": get_tp_group().world_size,
+-        "trace": path.name,
+-    }
+diff --git a/lab/ihc_fusion/benchmarks/tp8_validation/run.sh b/lab/ihc_fusion/benchmarks/tp8_validation/run.sh
+deleted file mode 100644
+index 111db31b0d..0000000000
+--- a/lab/ihc_fusion/benchmarks/tp8_validation/run.sh
++++ /dev/null
+@@ -1,42 +0,0 @@
+-#!/usr/bin/env bash
+-set -euo pipefail
+-HARNESS=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+-REPO=$(cd -- "$HARNESS/../../../.." && pwd)
+-PYTHON=${HY4_TP8_PYTHON:-"$REPO/.venv/bin/python"}
+-test -x "$PYTHON"
+-ENTRY=${1:?Use inspect_environment.py, validate.py, benchmark.py or analyze_perf.py}
+-shift
+-if [[ "$ENTRY" == analyze_perf.py ]]; then
+-  # Analysis uses saved data only, before checkpoint checks or GPU environment setup.
+-  exec "$PYTHON" -S "$HARNESS/$ENTRY" "${HY4_TP8_RUN:?Set the saved run directory}/performance" "$@"
+-fi
+-: "${HY4_TP8_RUN:?Set a fresh results directory}"
+-export HY4_TP8_RUN=$(realpath -m -- "$HY4_TP8_RUN")
+-case "$ENTRY" in
+-  inspect_environment.py) PHASE=environment ;;
+-  validate.py) PHASE=validation ;;
+-  benchmark.py) PHASE=performance ;;
+-  decode_profile.py) PHASE=decode_profile ;;
+-  serving.py) PHASE=serving ;;
+-  *) echo "Unknown TP8 entrypoint: $ENTRY" >&2; exit 2 ;;
+-esac
+-mkdir -p "$HY4_TP8_RUN/environment" "$HY4_TP8_RUN/$PHASE/raw"
+-: "${HY4_TP8_GPUS:?Set the physical GPU indices explicitly}"
+-export PYTHONDONTWRITEBYTECODE=1
+-cd "$REPO"
+-# No sitecustomize, torch import or CUDA context before the availability gate.
+-"$PYTHON" -S "$HARNESS/check_gpus.py"
+-export CUDA_VISIBLE_DEVICES="$HY4_TP8_GPUS"
+-export PYTHONPATH="$HARNESS/bootstrap:$REPO"
+-export TRITON_CACHE_DIR="$HY4_TP8_RUN/cache/triton"
+-export VLLM_CACHE_ROOT="$HY4_TP8_RUN/cache/vllm"
+-export TORCHINDUCTOR_CACHE_DIR="$HY4_TP8_RUN/cache/inductor"
+-export CUDA_CACHE_PATH="$HY4_TP8_RUN/cache/cuda"
+-export XDG_CACHE_HOME="$HY4_TP8_RUN/cache/xdg"
+-export FLASHINFER_WORKSPACE_BASE="$HY4_TP8_RUN/cache/flashinfer"
+-export VLLM_ENABLE_V1_MULTIPROCESSING=${VLLM_ENABLE_V1_MULTIPROCESSING:-0}
+-export VLLM_WORKER_MULTIPROC_METHOD=${VLLM_WORKER_MULTIPROC_METHOD:-spawn}
+-export VLLM_USE_BREAKABLE_CUDAGRAPH=${VLLM_USE_BREAKABLE_CUDAGRAPH:-0}
+-STAMP=$(date -u +%Y%m%dT%H%M%S.%N)
+-"$PYTHON" "$HARNESS/$ENTRY" "$@" \
+-  2>&1 | tee "$HY4_TP8_RUN/$PHASE/${ENTRY%.py}_$STAMP.log"
+diff --git a/lab/ihc_fusion/benchmarks/tp8_validation/serving.py b/lab/ihc_fusion/benchmarks/tp8_validation/serving.py
+deleted file mode 100644
+index 9998ba95a5..0000000000
+--- a/lab/ihc_fusion/benchmarks/tp8_validation/serving.py
++++ /dev/null
+@@ -1,416 +0,0 @@
+-# SPDX-License-Identifier: Apache-2.0
+-# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+-
+-# SPDX-License-Identifier: Apache-2.0
+-# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+-"""Serial HY4 serving comparisons using the native vllm serve / bench serve CLI."""
+-
+-import argparse
+-import hashlib
+-import json
+-import math
+-import os
+-import signal
+-import socket
+-import subprocess
+-import sys
+-import time
+-from contextlib import redirect_stderr, redirect_stdout
+-from pathlib import Path
+-
+-from lab.ihc_fusion.benchmarks.tp4_validation.analyze_perf import csvwrite, write
+-
+-METRICS = (
+-    "p50_ttft_ms",
+-    "p90_ttft_ms",
+-    "p50_tpot_ms",
+-    "p90_tpot_ms",
+-    "request_throughput",
+-    "output_throughput",
+-)
+-
+-
+-def server_arguments(config_path, config):
+-    """Pass prefix caching explicitly across the CLI subparser boundary."""
+-    prefix_flag = (
+-        "--enable-prefix-caching"
+-        if config["enable_prefix_caching"]
+-        else "--no-enable-prefix-caching"
+-    )
+-    return ["--config", str(config_path), prefix_flag]
+-
+-
+-def parse_args():
+-    parser = argparse.ArgumentParser(description=__doc__)
+-    parser.add_argument(
+-        "--tp-size", type=int, default=len(os.getenv("HY4_TP8_GPUS", "").split(","))
+-    )
+-    parser.add_argument("--host", default="127.0.0.1")
+-    parser.add_argument("--port", type=int, required=True)
+-    parser.add_argument("--input-len", type=int, default=8192)
+-    parser.add_argument("--output-len", type=int, default=128)
+-    parser.add_argument("--concurrency", nargs="+", type=int, default=[1])
+-    parser.add_argument("--request-rate", type=float, default=float("inf"))
+-    parser.add_argument("--request-count", type=int, default=16)
+-    parser.add_argument("--warmup", type=int, default=2)
+-    parser.add_argument("--rounds", type=int, default=3)
+-    parser.add_argument("--seed", type=int, default=7)
+-    parser.add_argument("--execution", choices=("eager", "graph"), default="eager")
+-    parser.add_argument(
+-        "--profile", action="store_true", help="Diagnostic traces; no speedup claims"
+-    )
+-    parser.add_argument("--modes", nargs="+", choices=("original", "intra", "cross"))
+-    parser.add_argument("--llm-overrides", type=json.loads, default={})
+-    parser.add_argument(
+-        "--timeout",
+-        type=int,
+-        default=900,
+-        help="Deadline per startup/benchmark, seconds",
+-    )
+-    args = parser.parse_args()
+-    args.modes = args.modes or (
+-        ["original"] if args.execution == "graph" else ["original", "intra", "cross"]
+-    )
+-    if args.execution == "graph" and args.modes != ["original"]:
+-        parser.error("Graph is an Original fallback check, not a fusion A/B")
+-    if args.modes[0] != "original" or len(set(args.modes)) != len(args.modes):
+-        parser.error("Unique modes must start with original")
+-    if (
+-        min(
+-            args.tp_size,
+-            args.input_len,
+-            args.request_count,
+-            args.rounds,
+-            args.timeout,
+-            *args.concurrency,
+-        )
+-        < 1
+-        or args.output_len < 2
+-        or args.warmup < 0
+-        or not args.request_rate > 0
+-    ):
+-        parser.error(
+-            "Positive sizes/rounds/timeout, output-len >= 2, warmup >= 0 required"
+-        )
+-    if len(set(args.concurrency)) != len(args.concurrency) or not 0 < args.port < 65536:
+-        parser.error("Concurrency values must be unique; port must be 1..65535")
+-    if args.tp_size != len(os.environ["HY4_TP8_GPUS"].split(",")) or not isinstance(
+-        args.llm_overrides, dict
+-    ):
+-        parser.error("TP must match selected GPUs; llm-overrides must be an object")
+-    if {
+-        "host",
+-        "port",
+-        "enforce_eager",
+-        "served_model_name",
+-    } & args.llm_overrides.keys():
+-        parser.error("Use dedicated host/port/execution options; model name is managed")
+-    return args
+-
+-
+-def result_row(result, args, mode, round_id, concurrency):
+-    valid = (
+-        result["completed"] == args.request_count
+-        and not result["failed"]
+-        and not any(result["errors"])
+-        and result["input_lens"] == [args.input_len] * args.request_count
+-        and result["output_lens"] == [args.output_len] * args.request_count
+-        and len(result["ttfts"]) == len(result["itls"]) == args.request_count
+-        and result["max_concurrency"] == concurrency
+-        and all(math.isfinite(result[key]) and result[key] > 0 for key in METRICS)
+-    )
+-    return dict(
+-        execution=args.execution,
+-        round=round_id,
+-        mode=mode,
+-        concurrency=concurrency,
+-        valid=valid,
+-        success_rate=result["completed"] / args.request_count,
+-        **{key: result[key] if valid else None for key in METRICS},
+-    )
+-
+-
+-def summarize(root, rows, args):
+-    for row in rows:
+-        group = [
+-            x
+-            for x in rows
+-            if (x["round"], x["concurrency"]) == (row["round"], row["concurrency"])
+-        ]
+-        paired = len(group) == len(args.modes) and all(x["valid"] for x in group)
+-        baseline = next((x for x in group if x["mode"] == "original"), None)
+-        row["comparison_valid"] = paired
+-        for key in METRICS:
+-            row[key + "_speedup"] = (
+-                (
+-                    baseline[key] / row[key]
+-                    if key.endswith("_ms")
+-                    else row[key] / baseline[key]
+-                )
+-                if paired and args.execution == "eager" and not args.profile
+-                else None
+-            )
+-    write(
+-        root,
+-        "summary.json",
+-        dict(
+-            numerical_accepted=False,
+-            kernel_hit_verified=False,
+-            profiling=args.profile,
+-            rows=rows,
+-        ),
+-    )
+-    csvwrite(root, "summary.csv", rows)
+-    print(
+-        "mode     round conc valid success TTFT P50/P90 ms "
+-        "TPOT P50/P90 ms  req/s  out tok/s  TTFTx TPOTx",
+-        flush=True,
+-    )
+-    for row in rows:
+-        values = [row[k] for k in METRICS] + [
+-            row[k + "_speedup"] for k in ("p50_ttft_ms", "p50_tpot_ms")
+-        ]
+-        print(
+-            f"{row['mode']:8} {row['round']:3} {row['concurrency']:4} "
+-            f"{str(row['comparison_valid']):5} {row['success_rate']:.1%} "
+-            + " ".join("-" if v is None else f"{v:.3f}" for v in values),
+-            flush=True,
+-        )
+-    print(
+-        f"Saved: {root}; performance does not establish numerical acceptance.",
+-        flush=True,
+-    )
+-
+-
+-def main():
+-    from lab.ihc_fusion.benchmarks.tp8_validation.validate import model_options
+-    from tests.utils import RemoteOpenAIServer
+-
+-    class _Server(RemoteOpenAIServer):
+-        """Use this harness's interpreter; native server owns readiness and cleanup."""
+-
+-        def _start_server(self, model, vllm_serve_args, env_dict):
+-            self.proc = subprocess.Popen(
+-                [
+-                    sys.executable,
+-                    "-m",
+-                    "vllm.entrypoints.cli.main",
+-                    "serve",
+-                    model,
+-                    *vllm_serve_args,
+-                ],
+-                env={
+-                    **os.environ,
+-                    "VLLM_WORKER_MULTIPROC_METHOD": "spawn",
+-                    **(env_dict or {}),
+-                },
+-                stdout=sys.stdout,
+-                stderr=sys.stderr,
+-                start_new_session=True,
+-            )
+-
+-    args = parse_args()
+-    signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(128 + signum))
+-    label = args.execution + ("_profile" if args.profile else "")
+-    root = Path(os.environ["HY4_TP8_RUN"]) / "serving" / label
+-    root.mkdir(parents=True, exist_ok=False)
+-    args.tokens = args.input_len
+-    config = model_options(args)
+-    config.setdefault("seed", args.seed)
+-    config.update(
+-        host=args.host,
+-        port=args.port,
+-        enforce_eager=args.execution == "eager",
+-        served_model_name="hy4-ihc",
+-        generation_config="vllm",
+-    )
+-    if "max_model_len" not in args.llm_overrides:
+-        config["max_model_len"] = args.input_len + args.output_len
+-    if "max_num_seqs" not in args.llm_overrides:
+-        config["max_num_seqs"] = max(args.concurrency)
+-    if config["max_model_len"] < args.input_len + args.output_len:
+-        raise ValueError("max_model_len is smaller than the requested workload")
+-    workload = {
+-        "dataset-name": "random",
+-        "input-len": args.input_len,
+-        "output-len": args.output_len,
+-        "random-range-ratio": 0,
+-        "random-prefix-len": 0,
+-        "num-prompts": args.request_count,
+-        "seed": args.seed,
+-        "tokenizer": config.get("tokenizer", config["model"]),
+-    }
+-    digest = hashlib.sha256(json.dumps(workload, sort_keys=True).encode()).hexdigest()
+-    write(
+-        root,
+-        "run_config.json",
+-        dict(
+-            options=vars(args),
+-            server=config,
+-            workload=workload,
+-            workload_sha256=digest,
+-            runtime_sha256=hashlib.sha256(
+-                Path("vllm/models/hy_v4/nvidia/model.py").read_bytes()
+-            ).hexdigest(),
+-        ),
+-    )
+-    cli = [sys.executable, "-m", "vllm.entrypoints.cli.main"]
+-    host = "127.0.0.1" if args.host == "0.0.0.0" else args.host
+-    base_url = f"http://{host}:{args.port}"
+-    rows = []
+-    try:
+-        for round_id in range(args.rounds):
+-            offset = round_id % len(args.modes)
+-            for mode in args.modes[offset:] + args.modes[:offset]:
+-                run = root / f"r{round_id}_{mode}"
+-                run.mkdir()
+-                # Reuse the existing idle gate before each owned server starts.
+-                subprocess.run(
+-                    [
+-                        sys.executable,
+-                        "-S",
+-                        str(Path(__file__).with_name("check_gpus.py")),
+-                    ],
+-                    check=True,
+-                    stdout=subprocess.DEVNULL,
+-                )
+-                with socket.socket() as probe:
+-                    probe.bind((args.host, args.port))
+-                flags = dict(
+-                    enable_ihc_post_pre_fusion=mode != "original",
+-                    enable_ihc_cross_layer_fusion=mode == "cross",
+-                )
+-                config["hf_overrides"].update(flags)
+-                if args.profile:
+-                    config["profiler_config"] = dict(
+-                        profiler="torch",
+-                        torch_profiler_dir=str(run / "traces"),
+-                        torch_profiler_with_stack=False,
+-                        ignore_frontend=True,
+-                        max_iterations=12,
+-                    )
+-                # JSON is valid YAML; vLLM's own config loader handles CLI conversion.
+-                config_path = run / "server.yaml"
+-                config_path.write_text(
+-                    json.dumps(
+-                        {k.replace("_", "-"): v for k, v in config.items()}, indent=2
+-                    )
+-                )
+-                serve_args = server_arguments(config_path, config)
+-                command = cli + ["serve", config["model"], *serve_args]
+-                write(run, "command.json", command)
+-                with (
+-                    (run / "server.log").open("w") as log,
+-                    redirect_stdout(log),
+-                    redirect_stderr(log),
+-                    _Server(
+-                        config["model"],
+-                        serve_args,
+-                        seed=None,
+-                        auto_port=False,
+-                        max_wait_seconds=args.timeout,
+-                    ) as server,
+-                ):
+-                    if server.proc.poll() is not None:
+-                        raise RuntimeError("Owned server exited")
+-                    lines = (run / "server.log").read_text().splitlines()
+-                    effective = next(
+-                        line for line in lines if "non-default args:" in line
+-                    )
+-                    if not all(
+-                        f"'{key}': {value}" in effective for key, value in flags.items()
+-                    ):
+-                        raise RuntimeError(
+-                            "Startup did not confirm the requested HY4 flags"
+-                        )
+-                    engine_config = next(
+-                        s for s in lines if "Initializing a V1 LLM engine" in s
+-                    )
+-                    expected_cache = config["enable_prefix_caching"]
+-                    if f"enable_prefix_caching={expected_cache}," not in engine_config:
+-                        raise RuntimeError(
+-                            "Effective prefix caching differs from config"
+-                        )
+-                    captures = [s for s in lines if "Graph capturing finished" in s]
+-                    if args.execution == "graph" and not captures:
+-                        raise RuntimeError("Graph capture was not confirmed by vLLM")
+-                    write(
+-                        run,
+-                        "startup.json",
+-                        dict(
+-                            pid=server.proc.pid,
+-                            flags=flags,
+-                            enable_prefix_caching=expected_cache,
+-                            native_parsed_args=effective,
+-                            graph_capture=captures,
+-                            native_engine_config=[
+-                                s
+-                                for s in lines
+-                                if "Initializing a V1 LLM engine" in s
+-                                or "Overriding to" in s
+-                            ],
+-                        ),
+-                    )
+-                    for concurrency in args.concurrency:
+-                        filename = f"c{concurrency}.json"
+-                        options = {
+-                            "backend": "vllm",
+-                            "base-url": base_url,
+-                            "model": "hy4-ihc",
+-                            **workload,
+-                            "served-model-name": "hy4-ihc",
+-                            "max-concurrency": concurrency,
+-                            "num-warmups": args.warmup,
+-                            "temperature": 0,
+-                            "request-rate": args.request_rate,
+-                            "extra-body": json.dumps(dict(seed=args.seed)),
+-                            "percentile-metrics": "ttft,tpot,itl,e2el",
+-                            "metric-percentiles": "50,90",
+-                            "result-dir": run,
+-                            "result-filename": filename,
+-                            "ready-check-timeout-sec": args.timeout,
+-                        }
+-                        command = (
+-                            cli
+-                            + ["bench", "serve"]
+-                            + [
+-                                "--ignore-eos",
+-                                "--trust-remote-code",
+-                                "--save-result",
+-                                "--save-detailed",
+-                                "--disable-tqdm",
+-                            ]
+-                            + [
+-                                s
+-                                for k, v in options.items()
+-                                for s in ("--" + k, str(v))
+-                            ]
+-                        )
+-                        if args.profile:
+-                            command.append("--profile")
+-                        write(run, f"c{concurrency}_command.json", command)
+-                        with (run / f"c{concurrency}.log").open("w") as output:
+-                            subprocess.run(
+-                                command,
+-                                check=True,
+-                                timeout=args.timeout,
+-                                stdout=output,
+-                                stderr=subprocess.STDOUT,
+-                            )
+-                        result = json.loads((run / filename).read_text())
+-                        rows.append(
+-                            result_row(result, args, mode, round_id, concurrency)
+-                        )
+-                time.sleep(1)  # Let driver utilization accounting settle after exit.
+-    finally:
+-        summarize(root, rows, args)
+-    return (
+-        0
+-        if len(rows) == args.rounds * len(args.modes) * len(args.concurrency)
+-        and all(row["valid"] for row in rows)
+-        else 1
+-    )
+-
+-
+-if __name__ == "__main__":
+-    sys.exit(main())
+diff --git a/lab/ihc_fusion/benchmarks/tp8_validation/validate.py b/lab/ihc_fusion/benchmarks/tp8_validation/validate.py
+deleted file mode 100644
+index dc2a3c620b..0000000000
+--- a/lab/ihc_fusion/benchmarks/tp8_validation/validate.py
++++ /dev/null
+@@ -1,254 +0,0 @@
+-# SPDX-License-Identifier: Apache-2.0
+-# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+-
+-"""Independent HY4 model checks or frozen local correctness/Graph regressions."""
+-
+-import argparse
+-import functools
+-import json
+-import os
+-import subprocess
+-import sys
+-from pathlib import Path
+-
+-from lab.ihc_fusion.benchmarks.tp4_validation.analyze_perf import write
+-
+-
+-def parse_args(argv=None, *, benchmark=False):
+-    parser = argparse.ArgumentParser(description=__doc__)
+-    selected = (
+-        os.getenv("HY4_TP8_GPUS", "").split(",") if os.getenv("HY4_TP8_GPUS") else []
+-    )
+-    parser.add_argument("--tp-size", type=int, default=len(selected) or 8)
+-    parser.add_argument(
+-        "--modes",
+-        nargs="+",
+-        choices=("original", "intra", "cross"),
+-        default=["original", "intra", "cross"],
+-    )
+-    parser.add_argument("--warmup", type=int, default=6 if benchmark else 5)
+-    parser.add_argument("--llm-overrides", type=json.loads, default={}, metavar="JSON")
+-    if benchmark:
+-        parser.add_argument("--tokens", type=int, default=8192)
+-        parser.add_argument("--rounds", type=int, default=9)
+-        parser.add_argument("--profile", action="store_true")
+-    else:
+-        parser.add_argument("--shapes", nargs="+", type=int, default=[512, 8192])
+-        parser.add_argument("--suite", choices=("model", "local"), default="model")
+-        parser.add_argument("--aa-repeats", type=int, default=2)
+-    options = parser.parse_args(argv)
+-    shapes = [options.tokens] if benchmark else options.shapes
+-    if options.tp_size < 1 or (selected and len(selected) != options.tp_size):
+-        parser.error("--tp-size must be positive and match HY4_TP8_GPUS")
+-    if options.warmup < 0 or any(n < 1 for n in shapes):
+-        parser.error("Shapes must be positive and warmup must be nonnegative")
+-    if benchmark and options.rounds < 1:
+-        parser.error("Rounds must be positive")
+-    if not benchmark and options.aa_repeats < 2:
+-        parser.error("A/A requires at least two Original captures")
+-    if len(set(shapes)) != len(shapes):
+-        parser.error("Shapes must be unique")
+-    if options.modes[0] != "original" or len(set(options.modes)) != len(options.modes):
+-        parser.error("Modes must be unique and start with the original baseline")
+-    if not isinstance(options.llm_overrides, dict):
+-        parser.error("--llm-overrides must be a JSON object")
+-    return options
+-
+-
+-def model_options(options):
+-    tokens = max(
+-        64, options.tokens if hasattr(options, "tokens") else max(options.shapes)
+-    )
+-    overrides = getattr(options, "llm_overrides", {}).copy()
+-    if {"model", "tensor_parallel_size"} & overrides.keys():
+-        raise ValueError("Use HY4_TP8_CHECKPOINT and --tp-size for model and TP")
+-    kwargs = dict(
+-        model=str(Path(os.environ["HY4_TP8_CHECKPOINT"]).resolve()),
+-        tensor_parallel_size=options.tp_size,
+-        pipeline_parallel_size=1,
+-        dtype="bfloat16",
+-        enforce_eager=True,
+-        distributed_executor_backend="mp",
+-        max_model_len=tokens + 256,
+-        max_num_batched_tokens=tokens,
+-        gpu_memory_utilization=0.65,
+-        enable_prefix_caching=False,
+-        max_num_seqs=4,
+-        trust_remote_code=True,
+-        hf_overrides={
+-            "enable_ihc_post_pre_fusion": True,
+-            "enable_ihc_cross_layer_fusion": True,
+-            **overrides.pop("hf_overrides", {}),
+-        },
+-    )
+-    kwargs.update(overrides)
+-    if not kwargs["enforce_eager"] or kwargs["pipeline_parallel_size"] != 1:
+-        raise ValueError(
+-            "Model hooks require Eager/PP1; "
+-            "use validate.py --suite local for Graph regression"
+-        )
+-    return kwargs
+-
+-
+-def prepare_run(options, phase):
+-    root = Path(os.environ["HY4_TP8_RUN"]) / phase
+-    raw = root / "raw"
+-    raw.mkdir(parents=True, exist_ok=True)
+-    if any(raw.iterdir()):
+-        raise ValueError(f"Use a fresh output directory: {raw}")
+-    kwargs = (
+-        None if getattr(options, "suite", None) == "local" else model_options(options)
+-    )
+-    write(raw, "run_config.json", dict(options=vars(options), llm=kwargs))
+-    return root, kwargs
+-
+-
+-def require_ranks(states, mode=None, *, tp_size):
+-    assert len(states) == tp_size and sorted(x["rank"] for x in states) == list(
+-        range(tp_size)
+-    ), states
+-    assert all(x["world_size"] == tp_size for x in states), states
+-    if mode is not None:
+-        for state in states:
+-            eligible = state["fusion_eligible"]
+-            assert state["flags"] == [
+-                dict(
+-                    intra=mode != "original" and enabled,
+-                    cross=mode == "cross" and i < len(eligible) - 1,
+-                )
+-                for i, enabled in enumerate(eligible)
+-            ], state
+-
+-
+-def main():
+-    options = parse_args()
+-    root, kwargs = prepare_run(options, "validation")
+-    raw = root / "raw"
+-    if options.suite == "local":
+-        repo = Path(__file__).resolve().parents[4]
+-        env = dict(
+-            os.environ,
+-            IHC_CORRECTNESS_JSON=str(raw / "kernel_errors.json"),
+-            IHC_LAUNCH_JSON=str(raw / "launches.json"),
+-        )
+-        # Isolate CUPTI activity state and Runtime fixtures between test files.
+-        targets = [
+-            (path.stem, ["--confcutdir=lab/ihc_fusion", str(path.relative_to(repo))])
+-            for path in sorted((repo / "lab/ihc_fusion/tests").glob("test_*.py"))
+-        ]
+-        targets.append(
+-            (
+-                "runtime",
+-                ["tests/models/test_hyv4_ihc_fusion.py"],
+-            )
+-        )
+-        results = []
+-        for name, tests in targets:
+-            command = [
+-                sys.executable,
+-                "-m",
+-                "pytest",
+-                "-c",
+-                "/dev/null",
+-                "-q",
+-                "-p",
+-                "no:cacheprovider",
+-                *tests,
+-                f"--junitxml={raw / (name + '.xml')}",
+-            ]
+-            with (root / f"{name}.log").open("w") as log:
+-                result = subprocess.run(
+-                    command, cwd=repo, env=env, stdout=log, stderr=subprocess.STDOUT
+-                )
+-            print((root / f"{name}.log").read_text(), flush=True)
+-            results.append(
+-                dict(suite=name, returncode=result.returncode, command=command)
+-            )
+-        passed = all(item["returncode"] == 0 for item in results)
+-        write(
+-            raw,
+-            "correctness_summary.json",
+-            dict(suite="local", passed=passed, results=results),
+-        )
+-        return 0 if passed else 1
+-
+-    from lab.ihc_fusion.benchmarks.tp8_validation import workers
+-    from vllm import LLM, SamplingParams
+-
+-    require = functools.partial(require_ranks, tp_size=options.tp_size)
+-    llm = LLM(**kwargs)
+-    states = llm.apply_model(workers.status)
+-    require(states)
+-    write(raw, "initial_workers.json", states)
+-    assert sorted(llm.apply_model(workers.install_observers)) == list(
+-        range(options.tp_size)
+-    )
+-    params = SamplingParams(temperature=0, max_tokens=1, seed=7)
+-    summary = []
+-    for n in dict.fromkeys([64, *options.shapes]):
+-        prompt = [{"prompt_token_ids": [100 + i % 197 for i in range(n)]}]
+-        llm.apply_model(functools.partial(workers.set_mode, name="original"))
+-        for _ in range(options.warmup):
+-            llm.generate(prompt, params, use_tqdm=False)
+-        rows = []
+-        for index, mode in enumerate(
+-            ["original"] * (options.aa_repeats - 1) + options.modes
+-        ):
+-            require(
+-                llm.apply_model(functools.partial(workers.set_mode, name=mode)), mode
+-            )
+-            llm.apply_model(
+-                functools.partial(
+-                    workers.capture, expected_ids=prompt[0]["prompt_token_ids"]
+-                )
+-            )
+-            tokens = (
+-                llm.generate(prompt, params, use_tqdm=False)[0].outputs[0].token_ids
+-            )
+-            values = llm.apply_model(
+-                functools.partial(workers.captured, baseline=index == 0)
+-            )
+-            require(values)
+-            rows.append(
+-                dict(
+-                    mode=mode,
+-                    comparison="baseline" if index == 0 else f"original/{mode}",
+-                    n=n,
+-                    tokens=tokens,
+-                    workers=values,
+-                )
+-            )
+-        write(raw, f"correctness_{n}.json", rows)
+-        token_match = all(row["tokens"] == rows[0]["tokens"] for row in rows)
+-        passed = token_match and all(w["pass"] for row in rows for w in row["workers"])
+-        status = (
+-            "INVALID"
+-            if any(not w["valid"] for row in rows for w in row["workers"])
+-            else "PASS"
+-            if passed
+-            else "FAIL"
+-        )
+-        summary.append(
+-            dict(tokens=n, passed=passed, token_match=token_match, status=status)
+-        )
+-        print(
+-            f"N={n}: {status} (strict hidden states, boundaries and route)",
+-            flush=True,
+-        )
+-    passed = all(row["passed"] for row in summary)
+-    write(
+-        raw,
+-        "correctness_summary.json",
+-        dict(
+-            suite="model",
+-            passed=passed,
+-            shapes=summary,
+-            rule="existing chain rtol=2*BF16 eps, atol=2e-5; unchanged",
+-            scope="checkpoint comparisons; frozen Golden tests are in --suite local",
+-        ),
+-    )
+-    return 0 if passed else 1
+-
+-
+-if __name__ == "__main__":
+-    sys.exit(main())
+diff --git a/lab/ihc_fusion/benchmarks/tp8_validation/workers.py b/lab/ihc_fusion/benchmarks/tp8_validation/workers.py
+deleted file mode 100644
+index c97d11b64b..0000000000
+--- a/lab/ihc_fusion/benchmarks/tp8_validation/workers.py
++++ /dev/null
+@@ -1,377 +0,0 @@
+-# SPDX-License-Identifier: Apache-2.0
+-# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+-
+-"""Per-instance observation through the existing all-worker apply_model RPC."""
+-
+-import functools
+-import os
+-
+-import torch
+-
+-from lab.ihc_fusion.tests.cases import metrics
+-from vllm.distributed import get_pp_group, get_tp_group
+-from vllm.forward_context import get_forward_context
+-
+-
+-def status(model):
+-    group = get_tp_group()
+-    backbone = model.model
+-    assert get_pp_group().world_size == 1, "Model observations require PP1"
+-    layers = list(backbone.layers)
+-    if not hasattr(model, "_ihc_fusion_eligible"):
+-        model._ihc_fusion_eligible = [layer._ihc_fusion_enabled for layer in layers]
+-    return dict(
+-        rank=group.rank_in_group,
+-        world_size=group.world_size,
+-        pid=os.getpid(),
+-        device=torch.cuda.current_device(),
+-        gpu=torch.cuda.get_device_name(),
+-        worker_module=__file__,
+-        fusion_eligible=model._ihc_fusion_eligible,
+-        flags=[
+-            dict(intra=layer._ihc_fusion_enabled, cross=layer._ihc_defer_post)
+-            for layer in layers
+-        ],
+-        partitions=[dict(layer=i) for i in range(len(layers))],
+-    )
+-
+-
+-def set_mode(model, name):
+-    backbone = model.model
+-    for i in range(backbone.start_layer, backbone.end_layer):
+-        layer = backbone.layers[i]
+-        layer._ihc_fusion_enabled = name != "original" and model._ihc_fusion_eligible[i]
+-        layer._ihc_defer_post = name == "cross" and i < backbone.end_layer - 1
+-    if hasattr(model, "_tp8_experiment"):
+-        model._tp8_experiment["mode"] = name
+-    return status(model)
+-
+-
+-def install_observers(model):
+-    state = {
+-        "phase": "none",
+-        "mode": None,
+-        "reference": None,
+-        "latest": None,
+-        "shapes": [],
+-        "layers": [],
+-        "boundaries": {},
+-        "boundary_reference": {},
+-        "handles": [],
+-        "capture_id": 0,
+-        "reference_inputs": None,
+-    }
+-    model._tp8_experiment = state
+-
+-    def observed_inputs(module, args, kwargs):
+-        if state["phase"] != "capture":
+-            return
+-        ctx = get_forward_context()
+-        metadata = ctx.attn_metadata
+-        name = model.model.layers[0].self_attn.mla_attn.layer_name
+-        attn = metadata.get(name) if isinstance(metadata, dict) else None
+-        table = getattr(attn, "block_table", None)
+-        if table is None:
+-            table = getattr(getattr(attn, "prefill", None), "block_table", None)
+-
+-        def values(tensor):
+-            return (
+-                tensor.detach().cpu().tolist()
+-                if isinstance(tensor, torch.Tensor)
+-                else None
+-            )
+-
+-        state["inputs"].append(
+-            dict(
+-                graph=str(ctx.cudagraph_runtime_mode),
+-                input_ids=values(kwargs.get("input_ids", args[0] if args else None)),
+-                positions=values(
+-                    kwargs.get("positions", args[1] if len(args) > 1 else None)
+-                ),
+-                query_start_loc=values(getattr(attn, "query_start_loc", None)),
+-                num_actual_tokens=getattr(attn, "num_actual_tokens", None),
+-                max_seq_len=getattr(attn, "max_seq_len", None),
+-                num_prefills=getattr(attn, "num_prefills", None),
+-                num_decodes=getattr(attn, "num_decodes", None),
+-                seq_lens=values(getattr(attn, "seq_lens", None)),
+-                slot_mapping=values(getattr(attn, "slot_mapping", None)),
+-                block_table=values(table),
+-            )
+-        )
+-
+-    state["handles"].append(
+-        model.register_forward_pre_hook(observed_inputs, with_kwargs=True)
+-    )
+-
+-    def observed_pre(module, args, layer_index, kind):
+-        if state["phase"] == "capture":
+-            state["shapes"].append(
+-                dict(
+-                    module="hc_pre",
+-                    shape=list(args[0].shape),
+-                    dtype=str(args[0].dtype),
+-                    layer=layer_index,
+-                    kind=kind,
+-                )
+-            )
+-
+-    def observed_layer(module, args, kwargs, result, layer_index):
+-        pending = result[1] if isinstance(result, tuple) and len(result) > 1 else None
+-        if state["phase"] == "capture" and isinstance(pending, tuple):
+-            state["shapes"].append(
+-                dict(
+-                    module="pending",
+-                    shape=list(pending[0].shape),
+-                    dtype=str(pending[0].dtype),
+-                    layer=layer_index,
+-                )
+-            )
+-        if state["phase"] == "capture":
+-            state["layers"].append(layer_index)
+-
+-    def observed_forward(module, args, kwargs, result):
+-        if state["phase"] == "capture":
+-            state["latest"] = result.detach().clone()
+-            state["snapshot_id"] = state["capture_id"]
+-
+-    def observed_boundary(module, args, layer_index):
+-        if state["phase"] == "capture":
+-            state["boundaries"][f"layer{layer_index}_input_norm"] = (
+-                args[0].detach().clone()
+-            )
+-
+-    def observed_head(module, args):
+-        if state["phase"] == "capture":
+-            state["boundaries"][f"layer{len(model.model.layers) - 1}_final_post"] = (
+-                args[0].detach().clone()
+-            )
+-
+-    for layer_index, layer in enumerate(model.model.layers):
+-        state["handles"].append(
+-            layer.register_forward_hook(
+-                functools.partial(observed_layer, layer_index=layer_index),
+-                with_kwargs=True,
+-            )
+-        )
+-        for kind, hc in (
+-            ("attention", layer.hc_attn_layer),
+-            ("mlp", layer.hc_mlp_layer),
+-        ):
+-            state["handles"].append(
+-                hc.hc_pre.register_forward_pre_hook(
+-                    functools.partial(observed_pre, layer_index=layer_index, kind=kind)
+-                )
+-            )
+-        if layer_index in (1, len(model.model.layers) - 1):
+-            state["handles"].append(
+-                layer.input_layernorm.register_forward_pre_hook(
+-                    functools.partial(observed_boundary, layer_index=layer_index)
+-                )
+-            )
+-    state["handles"].append(
+-        model.model.hc_head.register_forward_pre_hook(observed_head)
+-    )
+-    state["handles"].append(
+-        model.register_forward_hook(observed_forward, with_kwargs=True)
+-    )
+-    return get_tp_group().rank_in_group
+-
+-
+-def capture(model, expected_ids=None):
+-    state = model._tp8_experiment
+-    state.update(
+-        phase="capture",
+-        latest=None,
+-        shapes=[],
+-        layers=[],
+-        boundaries={},
+-        inputs=[],
+-        snapshot_id=None,
+-        expected_ids=expected_ids,
+-        capture_id=state["capture_id"] + 1,
+-    )
+-    torch.manual_seed(7)
+-    return get_tp_group().rank_in_group
+-
+-
+-def compare(actual, reference=None):
+-    result = dict(
+-        shape=list(actual.shape),
+-        dtype=str(actual.dtype),
+-        device=str(actual.device),
+-        valid=True,
+-        finite=bool(torch.isfinite(actual).all().item()),
+-    )
+-    if reference is not None:
+-        result.update(
+-            shape_match=actual.shape == reference.shape,
+-            dtype_match=actual.dtype == reference.dtype,
+-        )
+-        if (
+-            not result["shape_match"]
+-            or not result["dtype_match"]
+-            or actual.device != reference.device
+-        ):
+-            return dict(result, valid=False, status="INVALID", **{"pass": False})
+-        if result["shape_match"] and result["dtype_match"]:
+-            result["metrics"] = metrics(actual, reference)
+-            result["cosine"] = torch.nn.functional.cosine_similarity(
+-                actual.double().flatten(), reference.double().flatten(), dim=0
+-            ).item()
+-            result["bitwise_equal"] = torch.equal(
+-                actual.contiguous().view(torch.uint8),
+-                reference.contiguous().view(torch.uint8),
+-            )
+-            result["unequal_elements"] = int(torch.count_nonzero(actual != reference))
+-            if (
+-                actual.dtype == torch.bfloat16
+-                and result["finite"]
+-                and torch.isfinite(reference).all()
+-            ):
+-                index = (actual.float() - reference.float()).abs().flatten().argmax()
+-                bits = [
+-                    int(t.flatten()[index].view(torch.int16))
+-                    for t in (actual, reference)
+-                ]
+-                ordered = [32768 - (b & 32767) if b < 0 else 32768 + b for b in bits]
+-                result["ulp_at_max_abs"] = abs(ordered[0] - ordered[1])
+-        try:
+-            # Reuse the existing TP4/synthetic-chain rule without changing tolerances.
+-            torch.testing.assert_close(
+-                actual, reference, rtol=2 * torch.finfo(torch.bfloat16).eps, atol=2e-5
+-            )
+-            result["existing_chain_rule_pass"] = True
+-        except AssertionError as error:
+-            result.update(existing_chain_rule_pass=False, failure=str(error))
+-    result["pass"] = result["finite"] and result.get("existing_chain_rule_pass", True)
+-    result["status"] = "PASS" if result["pass"] else "FAIL"
+-    return result
+-
+-
+-def captured(model, baseline=False):
+-    state = model._tp8_experiment
+-    state["phase"] = "none"
+-    actual = state["latest"]
+-    inputs = state["inputs"]
+-    record = inputs[0] if len(inputs) == 1 else {}
+-    expected = (
+-        state["expected_ids"]
+-        if state["expected_ids"] is not None
+-        else record.get("input_ids")
+-    )
+-    n = len(expected) if expected is not None else 0
+-    logical = {
+-        k: record.get(k)
+-        for k in (
+-            "input_ids",
+-            "positions",
+-            "query_start_loc",
+-            "num_actual_tokens",
+-            "max_seq_len",
+-        )
+-    }
+-    valid = (
+-        n > 0
+-        and isinstance(actual, torch.Tensor)
+-        and actual.shape[0] == n
+-        and state["snapshot_id"] == state["capture_id"]
+-        and record.get("graph") == "NONE"
+-        and logical
+-        == dict(
+-            input_ids=expected,
+-            positions=list(range(n)),
+-            query_start_loc=[0, n],
+-            num_actual_tokens=n,
+-            max_seq_len=n,
+-        )
+-    )
+-    if baseline:
+-        state["reference"] = None
+-    info = dict(
+-        rank=get_tp_group().rank_in_group,
+-        world_size=get_tp_group().world_size,
+-        capture_id=state["capture_id"],
+-        snapshot_id=state["snapshot_id"],
+-        forward_calls=len(inputs),
+-        inputs=inputs,
+-    )
+-    if not valid or (
+-        not baseline
+-        and (state["reference"] is None or logical != state["reference_inputs"])
+-    ):
+-        state["latest"] = None
+-        return dict(
+-            info,
+-            valid=False,
+-            status="INVALID",
+-            reason="Expected one fresh Eager full-prompt Forward and matching inputs",
+-            **{"pass": False},
+-        )
+-    torch.cuda.synchronize()
+-    count = len(model.model.layers)
+-    if baseline:
+-        state["reference"] = actual
+-        state["reference_inputs"] = logical
+-        state["boundary_reference"] = state["boundaries"].copy()
+-    out = compare(actual, None if baseline else state["reference"])
+-    out.update(info)
+-    out.update(
+-        rank=get_tp_group().rank_in_group,
+-        world_size=get_tp_group().world_size,
+-        hc_shapes=state["shapes"],
+-    )
+-    eligible = (
+-        512 <= actual.shape[0] <= 8192
+-        and actual.shape[1:] == (6144,)
+-        and actual.dtype == torch.bfloat16
+-        and all(model._ihc_fusion_eligible)
+-    )
+-    expected_pending = (
+-        list(range(count - 1)) if state["mode"] == "cross" and eligible else []
+-    )
+-    observed_pending = sorted(
+-        item["layer"] for item in state["shapes"] if item["module"] == "pending"
+-    )
+-    final_post = f"layer{count - 1}_final_post"
+-    out["path"] = dict(
+-        mode=state["mode"],
+-        eligible_shape=eligible,
+-        observed_layers=sorted(set(state["layers"])),
+-        observed_pending_layers=observed_pending,
+-        expected_pending_layers=expected_pending,
+-        first_pre_observed=any(
+-            item["layer"] == 0 and item.get("kind") == "attention"
+-            for item in state["shapes"]
+-        ),
+-        last_post_observed=final_post in state["boundaries"],
+-    )
+-    out["path"]["pass"] = (
+-        out["path"]["observed_layers"] == list(range(count))
+-        and observed_pending == expected_pending
+-        and out["path"]["first_pre_observed"]
+-        and out["path"]["last_post_observed"]
+-    )
+-    out["boundaries"] = {
+-        name: compare(
+-            value, None if baseline else state["boundary_reference"].get(name)
+-        )
+-        for name, value in state["boundaries"].items()
+-    }
+-    expected = {f"layer{i}_input_norm" for i in (1, count - 1) if 0 <= i < count}
+-    expected.add(final_post)
+-    out["boundaries_pass"] = set(out["boundaries"]) == expected and all(
+-        item["pass"] for item in out["boundaries"].values()
+-    )
+-    out["pass"] &= out["path"]["pass"] and out["boundaries_pass"]
+-    out["valid"] &= (
+-        (baseline or set(state["boundary_reference"]) == expected)
+-        and out["path"]["pass"]
+-        and set(out["boundaries"]) == expected
+-        and all(b["valid"] for b in out["boundaries"].values())
+-    )
+-    if baseline and not out["valid"]:
+-        state["reference"] = None
+-    out["pass"] &= out["valid"]
+-    out["status"] = "INVALID" if not out["valid"] else "PASS" if out["pass"] else "FAIL"
+-    state["latest"] = None
+-    return out
+diff --git a/lab/ihc_fusion/tests/cases.py b/lab/ihc_fusion/tests/cases.py
+deleted file mode 100644
+index 7ad1daf68e..0000000000
+--- a/lab/ihc_fusion/tests/cases.py
++++ /dev/null
+@@ -1,17 +0,0 @@
+-# SPDX-License-Identifier: Apache-2.0
+-# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+-"""Reuse the frozen input and acceptance helpers from the production regression."""
+-
+-import torch
+-
+-from tests.models.test_hyv4_ihc_fusion import (  # noqa: F401
+-    check_outputs,
+-    make_case,
+-    metrics,
+-)
+-
+-DTYPES = {
+-    "float32": torch.float32,
+-    "bfloat16": torch.bfloat16,
+-    "float16": torch.float16,
+-}
+diff --git a/lab/ihc_fusion/tests/check_decode_two_stage.py b/lab/ihc_fusion/tests/check_decode_two_stage.py
+deleted file mode 100644
+index a083db3992..0000000000
+--- a/lab/ihc_fusion/tests/check_decode_two_stage.py
++++ /dev/null
+@@ -1,60 +0,0 @@
+-# SPDX-License-Identifier: Apache-2.0
+-# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+-"""Guard Post rounding, partial layout, and replay for the independent C=4 path."""
+-
+-import pytest
+-import torch
+-import triton
+-
+-from lab.ihc_fusion.baselines.official import official_post_pre_into
+-from lab.ihc_fusion.kernels.decode_two_stage import decode_two_stage
+-from lab.ihc_fusion.kernels.fused_post_pre import fused_post_pre
+-from lab.ihc_fusion.reference.torch_post_pre import torch_post_pre
+-from lab.ihc_fusion.tests.cases import DTYPES, check_outputs, make_case
+-
+-
+-@pytest.mark.parametrize("dtype", DTYPES.values(), ids=DTYPES.keys())
+-@pytest.mark.parametrize(
+-    "n,d,kind",
+-    [(n, d, "random") for n in (1, 8, 32, 128) for d in (4096, 7168)]
+-    + [(3, 257, k) for k in ("random", "zero", "tiny", "large", "cancel", "saturated")]
+-    + [(0, 128, "random")],
+-)
+-def test_partials_and_outputs(dtype, n, d, kind):
+-    args = make_case(n, d, dtype, kind=kind, offset=True)
+-    expected = torch_post_pre(*args)
+-    out = tuple(torch.empty_like(t) for t in expected)
+-    baseline = tuple(torch.empty_like(t) for t in expected)
+-    p = torch.empty((n, triton.cdiv(4 * d, 1024), 9), device="cuda")
+-    q = torch.empty_like(p)
+-    official_post_pre_into(*args, out=baseline, partial=q)
+-    decode_two_stage(*args, out=out, partial=p)
+-    torch.testing.assert_close(p, q, rtol=0, atol=0)
+-    check_outputs(out, expected)
+-    check_outputs(out, baseline)
+-    check_outputs(out, fused_post_pre(*args))
+-    if not n:
+-        return
+-    # Replay must consume new input contents, without stale partials.
+-    graph = torch.cuda.CUDAGraph()
+-    with torch.cuda.graph(graph):
+-        decode_two_stage(*args, out=out, partial=p)
+-    for factor in (0.5, -1.0):
+-        args[0].mul_(factor)
+-        graph.replay()
+-        check_outputs(out, torch_post_pre(*args))
+-
+-
+-def test_two_launches():
+-    args = make_case(1, 7168, torch.bfloat16)
+-    out = decode_two_stage(*args)
+-    partial = torch.empty((1, 28, 9), device="cuda")
+-    torch.cuda.synchronize()
+-    with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA]) as p:
+-        decode_two_stage(*args, out=out, partial=partial)
+-        torch.cuda.synchronize()
+-    names = [
+-        e.name for e in p.events() if e.device_type == torch.autograd.DeviceType.CUDA
+-    ]
+-    assert len(names) == 2, names
+-    assert "_post_pre_stage1" in names[0] and "_ihc_pre_stage2" in names[1]
+diff --git a/lab/ihc_fusion/tests/test_post_pre.py b/lab/ihc_fusion/tests/test_post_pre.py
+deleted file mode 100644
+index 84dadf0f83..0000000000
+--- a/lab/ihc_fusion/tests/test_post_pre.py
++++ /dev/null
+@@ -1,100 +0,0 @@
+-# SPDX-License-Identifier: Apache-2.0
+-# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+-"""Production BF16/C4/D6144 math, independent references and actual GPU launches."""
+-
+-import json
+-import os
+-from pathlib import Path
+-
+-import pytest
+-import torch
+-
+-from lab.ihc_fusion.baselines.official import (
+-    official_post_pre,
+-    official_post_pre_into,
+-    provenance,
+-)
+-from lab.ihc_fusion.kernels.fused_post_pre import fused_post_pre
+-from lab.ihc_fusion.reference.torch_post_pre import torch_post_pre
+-from lab.ihc_fusion.tests.cases import check_outputs, make_case
+-from vllm.models.hy_v4.nvidia.triton_ihc_post_pre import triton_ihc_post_pre
+-
+-RECORDS = []
+-
+-
+-@pytest.fixture(scope="module", autouse=True)
+-def numeric_environment():
+-    previous = torch.backends.cuda.matmul.allow_tf32
+-    torch.backends.cuda.matmul.allow_tf32 = False
+-    yield
+-    torch.backends.cuda.matmul.allow_tf32 = previous
+-    if path := os.getenv("IHC_CORRECTNESS_JSON"):
+-        Path(path).write_text(json.dumps(dict(provenance=provenance(), cases=RECORDS)))
+-
+-
+-@pytest.mark.parametrize(
+-    "n,kind",
+-    [(n, "random") for n in (128, 513, 8192)]
+-    + [(5, kind) for kind in ("zero", "tiny", "large", "cancel", "saturated")],
+-)
+-def test_numerical(n, kind):
+-    args = (
+-        *make_case(n, 6144, torch.bfloat16, kind=kind, offset=True)[:6],
+-        2.0,
+-        1e-6,
+-        1e-5,
+-    )
+-    baseline, golden = official_post_pre(*args), torch_post_pre(*args)
+-    actual = triton_ihc_post_pre(*args)
+-    RECORDS.append(
+-        dict(
+-            n=n,
+-            kind=kind,
+-            baseline_vs_golden=check_outputs(baseline, golden),
+-            fused_vs_golden=check_outputs(actual, golden),
+-            fused_vs_official=check_outputs(actual, baseline),
+-        )
+-    )
+-    check_outputs(fused_post_pre(*args), baseline)  # Preallocated benchmark variant.
+-    if n == 513:
+-        graph = torch.cuda.CUDAGraph()
+-        with torch.cuda.graph(graph):
+-            captured = triton_ihc_post_pre(*args)
+-        args[0].neg_()
+-        graph.replay()
+-        check_outputs(captured, official_post_pre(*args))
+-        check_outputs(captured, torch_post_pre(*args))
+-
+-
+-def test_preallocated_baseline_matches_official_wrappers():
+-    args = make_case(7, 6144, torch.bfloat16, offset=True)
+-    expected = official_post_pre(*args)
+-    out = tuple(torch.empty_like(tensor) for tensor in expected)
+-    partial = torch.empty((7, 24, 9), device="cuda", dtype=torch.float32)
+-    actual = official_post_pre_into(*args, out=out, partial=partial)
+-    for a, b in zip(actual, expected):
+-        torch.testing.assert_close(a, b, rtol=0, atol=0)
+-
+-
+-def test_gpu_launches():
+-    args = make_case(513, 6144, torch.bfloat16)
+-    launches = {}
+-    for fn, count in ((triton_ihc_post_pre, 1), (official_post_pre, 3)):
+-        for _ in range(3):
+-            fn(*args)
+-        torch.cuda.synchronize()
+-        with torch.profiler.profile(
+-            activities=[torch.profiler.ProfilerActivity.CUDA]
+-        ) as prof:
+-            fn(*args)
+-            torch.cuda.synchronize()
+-        names = [
+-            e.name
+-            for e in prof.events()
+-            if e.device_type == torch.autograd.DeviceType.CUDA
+-        ]
+-        assert len(names) == count, names
+-        launches[fn.__name__] = names
+-    assert "_fused_post_pre" in launches[triton_ihc_post_pre.__name__][0]
+-    if path := os.getenv("IHC_LAUNCH_JSON"):
+-        Path(path).write_text(json.dumps(launches))
+diff --git a/lab/ihc_fusion/tests/test_prefill_workload.py b/lab/ihc_fusion/tests/test_prefill_workload.py
+deleted file mode 100644
+index d44d42f537..0000000000
+--- a/lab/ihc_fusion/tests/test_prefill_workload.py
++++ /dev/null
+@@ -1,233 +0,0 @@
+-# SPDX-License-Identifier: Apache-2.0
+-# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+-"""Validate the public HY4 D=6144 contract absent from the original suite."""
+-
+-import pytest
+-import torch
+-
+-
+-@pytest.mark.parametrize("enabled", [False, True])
+-def test_serving_prefix_cache_survives_subparser(tmp_path, enabled):
+-    """The effective server option must match the benchmark's cache policy."""
+-    import argparse
+-    import json
+-
+-    from lab.ihc_fusion.benchmarks.tp8_validation.serving import server_arguments
+-    from vllm.utils.argparse_utils import FlexibleArgumentParser
+-
+-    parser = FlexibleArgumentParser()
+-    serve = parser.add_subparsers().add_parser("serve")
+-    serve.add_argument("model_tag")
+-    serve.add_argument("--config")
+-    serve.add_argument(
+-        "--enable-prefix-caching", action=argparse.BooleanOptionalAction, default=True
+-    )
+-    path = tmp_path / "server.yaml"
+-    path.write_text(json.dumps({"enable-prefix-caching": enabled}))
+-    args = parser.parse_args(
+-        ["serve", "hy4", *server_arguments(path, {"enable_prefix_caching": enabled})]
+-    )
+-    assert args.enable_prefix_caching is enabled
+-
+-
+-def test_model_harness_configuration(monkeypatch):
+-    """The shared entrypoints preserve TP, shapes, modes and runtime overrides."""
+-    from lab.ihc_fusion.benchmarks.tp8_validation.validate import (
+-        model_options,
+-        parse_args,
+-    )
+-
+-    monkeypatch.setenv("HY4_TP8_GPUS", "2,5")
+-    monkeypatch.setenv("HY4_TP8_CHECKPOINT", "/tmp/hy4-checkpoint")
+-    options = parse_args(
+-        [
+-            "--tokens",
+-            "513",
+-            "--rounds",
+-            "2",
+-            "--warmup",
+-            "0",
+-            "--modes",
+-            "original",
+-            "cross",
+-            "--llm-overrides",
+-            '{"max_num_seqs": 7, "hf_overrides": {"custom_field": 3}}',
+-        ],
+-        benchmark=True,
+-    )
+-    config = model_options(options)
+-    assert config["tensor_parallel_size"] == options.tp_size == 2
+-    assert config["max_num_batched_tokens"] == 513
+-    assert config["max_num_seqs"] == 7 and config["hf_overrides"]["custom_field"] == 3
+-    assert config["hf_overrides"]["enable_ihc_cross_layer_fusion"] is True
+-    assert options.modes == ["original", "cross"] and not options.profile
+-    options = parse_args(["--suite", "local", "--shapes", "128", "512"])
+-    assert options.suite == "local" and options.shapes == [128, 512]
+-
+-
+-def test_timing_analysis_without_gate_or_profiler(tmp_path, capsys):
+-    """Use per-sample rank maxima and paired statistics without requiring traces."""
+-    import csv
+-    import json
+-
+-    from lab.ihc_fusion.benchmarks.tp4_validation.analyze_perf import analyze, write
+-
+-    raw = tmp_path / "raw"
+-    raw.mkdir()
+-    modes = ["original", "intra", "cross"]
+-    workers = [
+-        dict(
+-            rank=r,
+-            world_size=2,
+-            partitions=[dict(layer=i) for i in range(5)],
+-            flags=[dict(intra=True) for _ in range(5)],
+-        )
+-        for r in range(2)
+-    ]
+-    write(raw, "initial_workers.json", workers)
+-    write(
+-        raw,
+-        "warm_original.json",
+-        dict(workers=[dict(rank=r, records=[dict(shape=[512])]) for r in range(2)]),
+-    )
+-    write(
+-        raw,
+-        "run_config.json",
+-        dict(
+-            options=dict(tokens=512, modes=modes, rounds=3),
+-            llm=dict(tensor_parallel_size=2, enforce_eager=True),
+-        ),
+-    )
+-    times = dict(original=[10, 14, 12], intra=[9, 11, 10], cross=[8, 9, 7])
+-    with (raw / "timing.csv").open("w") as stream:
+-        writer = csv.DictWriter(
+-            stream, ["round", "mode", "rank0_ms", "rank1_ms", "forward_max_ms"]
+-        )
+-        writer.writeheader()
+-        for step in range(3):
+-            for mode in modes:
+-                ms = times[mode][step]
+-                writer.writerow(
+-                    dict(
+-                        round=step,
+-                        mode=mode,
+-                        rank0_ms=ms - 1,
+-                        rank1_ms=ms,
+-                        forward_max_ms=ms,
+-                    )
+-                )
+-    result = analyze(tmp_path)
+-    assert result["forward"]["original"]["median"] == 12
+-    assert result["paired"]["original/cross"]["speedup"]["median"] == 14 / 9
+-    assert result["paired"]["original/cross"]["saved_ms"]["median"] == 5
+-    assert not result["metadata"]["kernel_hit_verified"]
+-    saved = json.loads((raw / "timing_summary.json").read_text())
+-    assert saved["paired"] == result["paired"]
+-    assert "saved 5.000 ms" in capsys.readouterr().out
+-    # Reanalysis replaces derived summaries, preserving the raw samples.
+-    assert analyze(tmp_path) == result
+-
+-
+-@pytest.mark.parametrize(
+-    "fault",
+-    ["missing", "stale", "multiple", "graph", "tokens", "positions", "reference"],
+-)
+-def test_invalid_capture_is_not_a_numerical_failure(monkeypatch, fault):
+-    """Never compare overwritten, stale or logically different request outputs."""
+-    from types import SimpleNamespace
+-
+-    from lab.ihc_fusion.benchmarks.tp8_validation import workers
+-
+-    monkeypatch.setattr(
+-        workers, "get_tp_group", lambda: SimpleNamespace(rank_in_group=0, world_size=1)
+-    )
+-    record = dict(
+-        graph="NONE",
+-        input_ids=[100, 101],
+-        positions=[0, 1],
+-        query_start_loc=[0, 2],
+-        num_actual_tokens=2,
+-        max_seq_len=2,
+-    )
+-    state = dict(
+-        latest=torch.zeros(2, 4),
+-        inputs=[record],
+-        expected_ids=[100, 101],
+-        snapshot_id=2,
+-        capture_id=2,
+-        reference=None,
+-        reference_inputs=None,
+-    )
+-    if fault == "missing":
+-        state["latest"] = None
+-    elif fault == "stale":
+-        state["snapshot_id"] = 1
+-    elif fault == "multiple":
+-        state["inputs"] *= 2
+-    elif fault == "graph":
+-        record["graph"] = "FULL"
+-    elif fault == "tokens":
+-        record["input_ids"] = [101, 100]
+-    elif fault == "positions":
+-        record["positions"] = [2, 3]
+-    result = workers.captured(
+-        SimpleNamespace(_tp8_experiment=state), baseline=fault != "reference"
+-    )
+-    assert result["status"] == "INVALID" and not result["pass"]
+-    assert "metrics" not in result and state["latest"] is None
+-
+-
+-def test_hidden_comparison_preserves_strict_failure():
+-    from lab.ihc_fusion.benchmarks.tp8_validation.workers import compare
+-
+-    reference = torch.ones(2, 4, dtype=torch.bfloat16)
+-    assert compare(reference, reference)["bitwise_equal"]
+-    assert compare(reference[:1], reference)["status"] == "INVALID"
+-    result = compare(reference + 0.125, reference)
+-    assert result["valid"] and result["status"] == "FAIL"
+-    assert result["unequal_elements"] == 8 and result["ulp_at_max_abs"] == 16
+-
+-
+-def test_full_prompt_comparison_ignores_physical_cache_addresses(monkeypatch):
+-    """Fresh full prompts can use different KV blocks without changing input data."""
+-    from types import SimpleNamespace
+-
+-    from lab.ihc_fusion.benchmarks.tp8_validation import workers
+-
+-    monkeypatch.setattr(
+-        workers, "get_tp_group", lambda: SimpleNamespace(rank_in_group=0, world_size=1)
+-    )
+-    monkeypatch.setattr(torch.cuda, "synchronize", lambda: None)
+-    state = dict(capture_id=0, reference=None, mode="original")
+-    model = SimpleNamespace(
+-        _tp8_experiment=state,
+-        _ihc_fusion_eligible=[False],
+-        model=SimpleNamespace(layers=[None]),
+-    )
+-    for baseline, block in [(True, 10), (False, 20)]:
+-        workers.capture(model, expected_ids=[100, 101])
+-        state.update(
+-            latest=torch.ones(2, 4, dtype=torch.bfloat16),
+-            snapshot_id=state["capture_id"],
+-            layers=[0],
+-            shapes=[dict(layer=0, module="hc_pre", kind="attention")],
+-            boundaries={
+-                name: torch.ones(2, 4)
+-                for name in ["layer0_input_norm", "layer0_final_post"]
+-            },
+-            inputs=[
+-                dict(
+-                    graph="NONE",
+-                    input_ids=[100, 101],
+-                    positions=[0, 1],
+-                    query_start_loc=[0, 2],
+-                    num_actual_tokens=2,
+-                    max_seq_len=2,
+-                    block_table=[[block]],
+-                    slot_mapping=[block * 64, block * 64 + 1],
+-                )
+-            ],
+-        )
+-        result = workers.captured(model, baseline=baseline)
+-        assert result["valid"] and result["status"] == "PASS"
+-    assert result["bitwise_equal"] and result["forward_calls"] == 1
+diff --git a/tests/models/test_hyv4_ihc_fusion.py b/tests/models/test_hyv4_ihc_fusion.py
+index 5fad1e2bf0..c86e86d70f 100644
+--- a/tests/models/test_hyv4_ihc_fusion.py
++++ b/tests/models/test_hyv4_ihc_fusion.py
+@@ -1,537 +1,233 @@
+ # SPDX-License-Identifier: Apache-2.0
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+-"""HY4-only Post/Pre boundary: metadata routing and rounded residual ownership."""
+ 
++import json
++import os
+ from types import SimpleNamespace
+ 
+ import pytest
+ import torch
++from torch.nn import functional as F
+ from transformers import PreTrainedConfig
+ 
+-from vllm.config import CUDAGraphMode
+-from vllm.forward_context import ForwardContext, override_forward_context
+-from vllm.model_executor.layers.attention.mla_attention import MLACommonMetadata
++from vllm.model_executor.layers.layernorm import RMSNorm
+ from vllm.models.hy_v4.nvidia import model as hy4
+ from vllm.models.hy_v4.nvidia.hc import HYV4HCLayer
+ from vllm.models.hy_v4.nvidia.triton_ihc import triton_ihc_post, triton_ihc_pre
+ from vllm.models.hy_v4.nvidia.triton_ihc_post_pre import triton_ihc_post_pre
+ 
+ 
+-def make_case(tokens, hidden, dtype, *, channels=4, kind="random", offset=False):
+-    generator = torch.Generator(device="cuda").manual_seed(20261021)
+-
+-    def randn(shape, dtype=torch.float32):
+-        return torch.randn(shape, generator=generator, device="cuda", dtype=dtype)
+-
+-    x = randn((tokens, hidden), dtype)
+-    residual = randn((tokens, channels, hidden), dtype)
+-    previous = randn((tokens, channels)).sigmoid() * 2
+-    weight = randn((2 * channels, channels * hidden)) / (channels * hidden) ** 0.5
+-    scale = torch.tensor([0.7, -0.4], device="cuda", dtype=torch.float32)
+-    base = randn((2 * channels,)) * 0.2
+-    if kind == "zero":
+-        x.zero_()
+-        residual.zero_()
+-    elif kind == "tiny":
+-        x.mul_(1e-4)
+-        residual.mul_(1e-4)
+-    elif kind == "large":
+-        x.mul_(100)
+-        residual.mul_(100)
+-    elif kind == "cancel":
+-        residual.copy_((-previous[..., None] * x.float()[:, None]).to(dtype))
+-    elif kind == "saturated":
+-        scale.mul_(100)
+-        base.copy_(torch.linspace(-30, 30, 2 * channels, device="cuda"))
+-    elif kind != "random":
+-        raise ValueError(kind)
+-    if offset:
+-
+-        def shifted(tensor):
+-            storage = torch.empty(tensor.numel() + 1, device="cuda", dtype=tensor.dtype)
+-            view = storage[1:].view(tensor.shape)
+-            view.copy_(tensor)
+-            return view
+-
+-        x, residual, previous, weight, scale, base = map(
+-            shifted, (x, residual, previous, weight, scale, base)
+-        )
+-    return x, residual, previous, weight, scale, base, 1.7, 2e-6, 1e-5
+-
+-
+-def metrics(actual, expected):
+-    difference = actual.double() - expected.double()
+-    reference_norm = expected.double().norm().item()
++def metric(actual, expected):
++    actual = actual.float().reshape(-1)
++    expected = expected.float().reshape(-1)
+     return {
+-        "max_abs": difference.abs().max().item() if actual.numel() else 0.0,
+-        "relative_l2": difference.norm().item() / max(reference_norm, 1e-30),
+-        "rms_abs": difference.square().mean().sqrt().item() if actual.numel() else 0.0,
++        "max_abs": (actual - expected).abs().max().item(),
++        "cosine": F.cosine_similarity(actual[None], expected[None]).item(),
+     }
+ 
+ 
+-def check_outputs(actual, expected):
+-    """Require exact Residual, FP32 gate accuracy, and <=2 activation ulps.
+-
+-    The 2*eps relative bound permits one final low precision rounding boundary
+-    on either side. FP32 uses 2e-5 relative + absolute for parallel GEMV/sigmoid
+-    differences. An 8*FP32-eps*sum(abs(channels)) absolute budget covers
+-    FP32 channel cancellation; relative L2 also stays below 2e-6 or dtype eps.
+-    Fixed before any fused implementation; never inferred from observed errors.
+-    """
+-    torch.testing.assert_close(actual[1], expected[1], rtol=0, atol=0)
+-    torch.testing.assert_close(actual[2], expected[2], rtol=2e-5, atol=2e-6)
+-    dtype = actual[0].dtype
+-    if dtype == torch.float32:
+-        rtol, atol, l2_bound = 2e-5, 2e-5, 2e-6
+-    else:
+-        eps = torch.finfo(dtype).eps
+-        rtol, atol, l2_bound = 2 * eps, 2e-5, eps
+-    # Four channels: gamma_C plus multiplication/sigmoid rounding budget.
+-    cancellation_budget = (
+-        8 * torch.finfo(torch.float32).eps * expected[1].float().abs().sum(dim=1)
+-    )
+-    output_error = (actual[0].float() - expected[0].float()).abs()
+-    budget = atol + rtol * expected[0].float().abs() + cancellation_budget
+-    assert torch.isfinite(actual[0]).all()
+-    assert (output_error <= budget).all(), {
+-        "max_error": output_error.max().item(),
+-        "max_budget_ratio": (output_error / budget).max().item(),
+-    }
+-    for index, bound in [(0, l2_bound), (2, 2e-6)]:
+-        error = metrics(actual[index], expected[index])
+-        assert error["relative_l2"] <= bound, error
+-    return {
+-        name: metrics(a, b)
+-        for name, a, b in zip(("output", "residual", "post_gates"), actual, expected)
+-    }
+-
+-
+-def official_post_pre(x, residual, previous, *pre_args):
+-    updated = triton_ihc_post(x, residual, previous)
+-    output, post = triton_ihc_pre(updated, *pre_args)
+-    return output, updated, post
+-
+-
+-def context(n, kind="prefill"):
+-    metadata = MLACommonMetadata(
+-        num_reqs=1,
+-        max_query_len=n,
+-        max_seq_len=n,
+-        num_actual_tokens=n,
+-        query_start_loc=torch.tensor([0, n]),
+-        slot_mapping=torch.empty(0, dtype=torch.int64),
+-        num_decodes=0,
+-        num_decode_tokens=0,
+-        num_prefills=1,
+-    )
+-    if kind in ("mixed", "decode"):
+-        metadata.num_decodes = 1
+-        metadata.num_decode_tokens = 1
+-        metadata.num_prefills = int(kind == "mixed")
+-    if kind == "padding":
+-        metadata.num_actual_tokens -= 1
+-    ctx = ForwardContext(
+-        no_compile_layers={}, attn_metadata={"attn": metadata}, slot_mapping={}
+-    )
+-    if kind == "none":
+-        return None
+-    if kind == "unknown":
+-        ctx.attn_metadata = {}
+-    if kind in ("graph", "graph_ubatch"):
+-        ctx.cudagraph_runtime_mode = CUDAGraphMode.FULL
+-    if kind == "graph_ubatch":
+-        ctx.ubatch_slices = []
+-    if kind == "compiled_graph":
+-        ctx.cudagraph_runtime_mode = CUDAGraphMode.PIECEWISE
+-    if kind == "ubatch":
+-        ctx.attn_metadata = [ctx.attn_metadata]
+-    return ctx
+-
+-
+-@pytest.mark.parametrize(
+-    "n,kind,dtype,enabled,expected",
+-    [
+-        (511, "prefill", torch.bfloat16, True, False),
+-        (511, "mixed", torch.bfloat16, True, False),
+-        (512, "prefill", torch.bfloat16, True, True),
+-        (512, "attn", torch.bfloat16, True, True),
+-        (4100, "mixed", torch.bfloat16, True, True),
+-        (8192, "mixed", torch.bfloat16, True, True),
+-        (512, "graph", torch.bfloat16, True, False),
+-        (512, "graph_ubatch", torch.bfloat16, True, False),
+-        (512, "compiled_graph", torch.bfloat16, True, False),
+-        (8192, "prefill", torch.bfloat16, True, True),
+-        (8193, "prefill", torch.bfloat16, True, False),
+-        (512, "prefill", torch.bfloat16, False, False),
+-        (512, "prefill", torch.float16, True, False),
+-        (512, "prefill", torch.float32, True, False),
+-        *[
+-            (512, kind, torch.bfloat16, True, False)
+-            for kind in (
+-                "decode",
+-                "unknown",
+-                "none",
+-                "padding",
+-                "ubatch",
+-                "layout",
+-                "hidden",
+-            )
+-        ],
+-    ],
+-)
+-def test_boundary_routes_and_preserves_ownership(
+-    dist_init, monkeypatch, n, kind, dtype, enabled, expected
+-):
+-    if kind == "compiled_graph":
+-        monkeypatch.setenv("VLLM_USE_BREAKABLE_CUDAGRAPH", "0")
+-    pre_attention = kind == "attn"
+-    d = 4096 if kind == "hidden" else 6144
+-    args = (*make_case(n, d, dtype)[:6], 2.0, 1e-6, 1e-5)
+-    if kind == "layout":
+-        x = torch.empty((n, d * 2), device="cuda", dtype=dtype)[:, ::2]
+-        x.copy_(args[0])
+-        args = (x, *args[1:])
+-    config = PreTrainedConfig(
++def config():
++    return PreTrainedConfig(
+         enable_ihc=True,
+-        hidden_size=d,
++        hidden_size=6144,
+         hc_mult=4,
+         hc_magnitude=2.0,
+         hc_eps=1e-6,
+         rms_norm_eps=1e-5,
+     )
+-    # Test the real boundary and HC modules independently of Attention/MLP.
+-    layer = hy4.HYV4DecoderLayer.__new__(hy4.HYV4DecoderLayer)
+-    torch.nn.Module.__init__(layer)
+-    layer.hc_attn_layer = HYV4HCLayer(config, 0).cuda()
+-    layer.hc_mlp_layer = HYV4HCLayer(config, 0).cuda()
+-    layer.self_attn = SimpleNamespace(mla_attn=SimpleNamespace(layer_name="attn"))
+-    layer._ihc_fusion_enabled = enabled
+-    pre = (layer.hc_attn_layer if pre_attention else layer.hc_mlp_layer).hc_pre
++
++
++def operator_case(tokens, layer):
++    pre = layer.hc_pre
++    hidden = pre.hidden_dim
++    channels = pre.hc_mult
+     with torch.no_grad():
+-        pre.hc_fn.weight.copy_(args[3])
+-        pre.hc_scale.copy_(args[4])
+-        pre.hc_base.copy_(args[5])
+-    calls = []
+-
+-    def fused(*a):
+-        calls.append(True)
+-        return triton_ihc_post_pre(*a)
+-
+-    monkeypatch.setattr(hy4, "triton_ihc_post_pre", fused)
+-    with override_forward_context(context(n, kind)):
+-        output, post, residual = layer._ihc_post_pre(
+-            *args[:3], pre_attention=pre_attention
++        pre.hc_fn.weight.normal_(std=0.002)
++        pre.hc_scale.fill_(0.01)
++        pre.hc_base.zero_()
++    generator = torch.Generator(device="cuda").manual_seed(20261026)
++    x = torch.randn(
++        (tokens, hidden), device="cuda", dtype=torch.bfloat16, generator=generator
++    )
++    residual = torch.randn(
++        (tokens, channels, hidden),
++        device="cuda",
++        dtype=torch.bfloat16,
++        generator=generator,
++    )
++    previous = torch.randn(
++        (tokens, channels), device="cuda", dtype=torch.float32, generator=generator
++    )
++    rms_weight = torch.ones(hidden, device="cuda", dtype=torch.float32)
++    return (
++        x,
++        residual,
++        previous,
++        pre.hc_fn.weight,
++        pre.hc_scale,
++        pre.hc_base,
++        pre.magnitude,
++        pre.hc_eps,
++        pre.layernorm_epsilon,
++        rms_weight,
++        1e-5,
++    )
++
++
++def reference_post_pre(args):
++    updated = triton_ihc_post(args[0], args[1], args[2])
++    output, post = triton_ihc_pre(updated, *args[3:9])
++    output = (
++        output
++        * torch.rsqrt(output.float().square().mean(-1, keepdim=True) + args[10])
++        * args[9]
++    )
++    return output.to(args[0].dtype), updated, post
++
++
++@pytest.mark.parametrize("tokens", (8192, 16384, 32768))
++@torch.inference_mode()
++def test_fused_operator_metrics(dist_init, tokens):
++    layer = HYV4HCLayer(config(), 0).cuda()
++    args = operator_case(tokens, layer)
++    fused = triton_ihc_post_pre(*args)
++    reference = reference_post_pre(args)
++    result = {
++        name: metric(actual, expected)
++        for name, actual, expected in zip(
++            ("output", "updated", "post"), fused, reference
+         )
+-    assert bool(calls) == expected
+-    check_outputs((output, residual, post), official_post_pre(*args))
++    }
++    print(json.dumps({"tokens": tokens, "operator": result}))
+ 
+ 
+-class _TestAttention(torch.nn.Module):
+-    def __init__(self, name):
++class DummyAttention(torch.nn.Module):
++    def __init__(self):
+         super().__init__()
+-        self.mla_attn = SimpleNamespace(layer_name=name)
++        self.mla_attn = SimpleNamespace(layer_name="attn")
+ 
+     def forward(self, positions, hidden_states):
+         return hidden_states.tanh()
+ 
+ 
+-def make_layers():
+-    torch.manual_seed(7)
+-    config = PreTrainedConfig(
+-        enable_ihc=True,
+-        hidden_size=6144,
+-        hc_mult=4,
+-        hc_magnitude=2.0,
+-        hc_eps=1e-6,
+-        rms_norm_eps=1e-5,
+-    )
+-    layers = []
+-    for i in range(3):
++def layers():
++    result = []
++    for index in range(3):
+         layer = hy4.HYV4DecoderLayer.__new__(hy4.HYV4DecoderLayer)
+         torch.nn.Module.__init__(layer)
+         layer.enable_ihc = True
+-        layer.hc_attn_layer = HYV4HCLayer(config, i).cuda()
+-        layer.hc_mlp_layer = HYV4HCLayer(config, i).cuda()
+-        layer.self_attn = _TestAttention(f"attn{i}")
+-        layer.input_layernorm = torch.nn.Identity()
+-        layer.post_attention_layernorm = torch.nn.Identity()
+-        layer.mlp = torch.nn.SiLU()
++        layer.hc_attn_layer = HYV4HCLayer(config(), index).cuda()
++        layer.hc_mlp_layer = HYV4HCLayer(config(), index).cuda()
++        layer.self_attn = DummyAttention().cuda()
++        layer.input_layernorm = RMSNorm(
++            config().hidden_size, config().rms_norm_eps
++        ).cuda()
++        layer.post_attention_layernorm = RMSNorm(
++            config().hidden_size, config().rms_norm_eps
++        ).cuda()
++        layer.mlp = torch.nn.SiLU().cuda()
+         with torch.no_grad():
+-            for j, hc in enumerate((layer.hc_attn_layer, layer.hc_mlp_layer)):
+-                hc.hc_pre.hc_fn.weight.normal_(std=0.002 * (1 + i + j))
+-                hc.hc_pre.hc_base.fill_(0.1 * (i + j))
+-        layers.append(layer)
+-    return layers
++            for hc in (layer.hc_attn_layer, layer.hc_mlp_layer):
++                hc.hc_pre.hc_fn.weight.normal_(std=0.002)
++                hc.hc_pre.hc_scale.fill_(0.01)
++                hc.hc_pre.hc_base.zero_()
++        result.append(layer)
++    return result
++
++
++def run_layers(model_layers, hidden, fused):
++    positions = torch.arange(hidden.shape[0], device="cuda")
++    states = []
++    pending = None
++    for index, layer in enumerate(model_layers):
++        layer._ihc_fusion_enabled = fused
++        layer._ihc_defer_post = fused and index < len(model_layers) - 1
++        hidden, pending = layer(positions, hidden, pending)
++        state = (
++            layer.hc_mlp_layer.post(hidden, *pending) if pending is not None else hidden
++        )
++        states.append(state.clone())
++    return states
+ 
+ 
+-@pytest.mark.parametrize(
+-    "n,candidate,pp_boundary",
+-    [(n, mode, False) for n in (128, 512, 8192) for mode in ("intra", "cross")]
+-    + [(512, "cross", True)],
+-)
+-def test_cross_layer_pending_chain(dist_init, monkeypatch, n, candidate, pp_boundary):
+-    """Distinct Pre parameters catch gate/weight ownership and missing final Post."""
+-    layers = make_layers()
+-    x = make_case(n, 6144, torch.bfloat16)[1]
+-    positions = torch.arange(n, device="cuda")
+-    ctx = context(n)
+-    ctx.attn_metadata = {
+-        f"attn{i}": next(iter(ctx.attn_metadata.values())) for i in range(3)
+-    }
+-    calls = []
+-    original = hy4.triton_ihc_post_pre
+-
+-    def fused(*args):
+-        calls.append(args[3].data_ptr())
+-        actual = original(*args)
+-        check_outputs(actual, official_post_pre(*args))
+-        return actual
+-
+-    monkeypatch.setattr(hy4, "triton_ihc_post_pre", fused)
+-    results = []
+-    with override_forward_context(ctx):
+-        for mode in ("original", candidate):
+-            hidden, pending = x, None
+-            calls.clear()
+-            for i, layer in enumerate(layers):
+-                layer._ihc_fusion_enabled = mode != "original"
+-                layer._ihc_defer_post = (
+-                    mode == "cross" and i < 2 and not (pp_boundary and i == 0)
+-                )
+-                if pp_boundary and i == 1:
+-                    assert pending is None
+-                    hidden = hidden.flatten(1)
+-                hidden, pending = layer(positions, hidden, pending)
+-                assert (pending is not None) == (layer._ihc_defer_post and n >= 512)
+-            assert pending is None
+-            results.append(hidden)
+-            expected = []
+-            if n >= 512 and mode != "original":
+-                for i, layer in enumerate(layers):
+-                    if mode == "cross" and i and not (pp_boundary and i == 1):
+-                        expected.append(
+-                            layer.hc_attn_layer.hc_pre.hc_fn.weight.data_ptr()
+-                        )
+-                    expected.append(layer.hc_mlp_layer.hc_pre.hc_fn.weight.data_ptr())
+-            assert calls == expected
+-    # Exact residuals are checked per boundary in the frozen accuracy helper.
+-    torch.testing.assert_close(
+-        results[1], results[0], rtol=2 * torch.finfo(torch.bfloat16).eps, atol=2e-5
++@torch.inference_mode()
++def test_fused_model_hidden_metrics(dist_init):
++    generator = torch.Generator(device="cuda").manual_seed(20261026)
++    hidden = torch.randn(
++        (8192, config().hidden_size),
++        device="cuda",
++        dtype=torch.bfloat16,
++        generator=generator,
+     )
++    original = torch.nn.ModuleList(layers())
++    fused = torch.nn.ModuleList(layers())
++    fused.load_state_dict(original.state_dict())
++    original_states = run_layers(original, hidden, False)
++    fused_states = run_layers(fused, hidden, True)
++    result = {
++        f"layer_{index}": metric(actual, expected)
++        for index, (actual, expected) in enumerate(zip(fused_states, original_states))
++    }
++    print(json.dumps({"hidden": result}))
++
++
++class HY4HiddenProbe:
++    def _layers(self):
++        return sorted(
++            (
++                layer
++                for layer in self.model_runner.model.modules()
++                if isinstance(layer, hy4.HYV4DecoderLayer)
++            ),
++            key=lambda layer: layer.layer_idx,
++        )
+ 
+-
+-@pytest.mark.parametrize("kind", ["disabled", "padding"])
+-def test_pending_post_falls_back_at_consumer(dist_init, kind):
+-    """A pending Post must be materialized even if the next layer cannot fuse."""
+-    args = make_case(512, 6144, torch.bfloat16)
+-    layer = make_layers()[1]
+-    layer.self_attn.mla_attn.layer_name = "attn"
+-    layer._ihc_defer_post = False
+-    with torch.no_grad():
+-        for hc in (layer.hc_attn_layer, layer.hc_mlp_layer):
+-            hc.hc_pre.hc_fn.weight.copy_(args[3])
+-            hc.hc_pre.hc_scale.copy_(args[4])
+-            hc.hc_pre.hc_base.copy_(args[5])
+-    positions = torch.arange(512, device="cuda")
+-    layer._ihc_fusion_enabled = False
+-    with override_forward_context(context(512)):
+-        materialized = layer.hc_mlp_layer.post(*args[:3])
+-        expected, _ = layer(positions, materialized, None)
+-    layer._ihc_fusion_enabled = kind != "disabled"
+-    with override_forward_context(context(512, kind)):
+-        actual, pending = layer(positions, args[0], (args[1], args[2]))
+-    assert pending is None
+-    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+-
+-
+-@pytest.mark.parametrize(
+-    "capability,expected",
+-    [
+-        ((9, 0), True),
+-        ((8, 0), False),
+-        ((10, 0), False),
+-        (None, False),
+-    ],
+-)
+-def test_architecture_dispatch(dist_init, monkeypatch, capability, expected):
+-    """Exercise constructor and dispatch without loading Attention/MLP weights."""
+-    from vllm.platforms.interface import DeviceCapability
+-
+-    monkeypatch.setattr(
+-        type(hy4.current_platform),
+-        "get_device_capability",
+-        classmethod(
+-            lambda cls, device_id=0: (
+-                DeviceCapability(*capability) if capability else None
+-            )
+-        ),
+-    )
+-    monkeypatch.setattr(hy4, "HYV4MLAAttention", lambda **kw: _TestAttention("attn"))
+-    monkeypatch.setattr(hy4, "HYV4FeedForward", lambda **kw: torch.nn.Identity())
+-    config = PreTrainedConfig(
+-        enable_ihc=True,
+-        enable_ihc_post_pre_fusion=True,
+-        hidden_size=6144,
+-        hc_mult=4,
+-        hc_magnitude=2.0,
+-        hc_eps=1e-6,
+-        rms_norm_eps=1e-5,
+-        num_attention_heads=1,
+-        qk_nope_head_dim=1,
+-        qk_rope_head_dim=2,
+-        v_head_dim=1,
+-        q_lora_rank=None,
+-        kv_lora_rank=1,
+-        mlp_layer_types=["dense"],
+-        intermediate_size=16,
+-        hidden_act="silu",
+-    )
+-    layer = hy4.HYV4DecoderLayer(
+-        config,
+-        SimpleNamespace(
+-            model_config=SimpleNamespace(enforce_eager=False), speculative_config=None
+-        ),
+-        prefix="layers.0",
+-    ).cuda()
+-    assert layer._ihc_fusion_enabled == expected
+-    args = make_case(512, 6144, torch.bfloat16)
+-    pre = layer.hc_mlp_layer.hc_pre
+-    with torch.no_grad():
+-        pre.hc_fn.weight.copy_(args[3])
+-        pre.hc_scale.copy_(args[4])
+-        pre.hc_base.copy_(args[5])
+-    calls = []
+-
+-    def fused(*inputs):
+-        calls.append(True)
+-        return triton_ihc_post_pre(*inputs)
+-
+-    monkeypatch.setattr(hy4, "triton_ihc_post_pre", fused)
+-    with override_forward_context(context(512)):
+-        output, post, residual = layer._ihc_post_pre(*args[:3])
+-    assert bool(calls) == expected
+-    check_outputs(
+-        (output, residual, post), official_post_pre(*args[:6], 2.0, 1e-6, 1e-5)
+-    )
++    def capture_hidden(self):
++        self.hidden = {}
++
++        def capture(layer, args, kwargs, output):
++            hidden, pending = output
++            if pending is not None:
++                hidden = layer.hc_mlp_layer.post(hidden, *pending)
++            self.hidden[layer.layer_idx] = hidden[-1:].detach().float().cpu()
++
++        for layer in self._layers():
++            layer.register_forward_hook(capture, with_kwargs=True)
++
++    def get_hidden(self):
++        return self.hidden
++
++
++def _full_hy4_hidden(vllm_runner, checkpoint, fused, tp, tokens):
++    from vllm import SamplingParams, TokensPrompt
++
++    with vllm_runner(
++        checkpoint,
++        tensor_parallel_size=tp,
++        hf_overrides={"enable_ihc_post_pre_fusion": fused},
++        worker_extension_cls=f"{__name__}.HY4HiddenProbe",
++        enforce_eager=True,
++        max_model_len=tokens + 1,
++        max_num_batched_tokens=tokens,
++        max_num_seqs=1,
++        enable_prefix_caching=False,
++    ) as runner:
++        runner.llm.collective_rpc("capture_hidden")
++        runner.llm.generate(
++            [TokensPrompt(prompt_token_ids=list(range(1, tokens + 1)))],
++            SamplingParams(temperature=0.0, max_tokens=1),
++        )
++        return runner.llm.collective_rpc("get_hidden")[0]
+ 
+ 
+-@pytest.mark.parametrize(
+-    "n,graph_kind,capture_metadata", [(512, "full", True), (1024, "breakable", False)]
++@pytest.mark.skipif(
++    not os.getenv("HY4_FULL_CHECKPOINT"), reason="full HY4 checkpoint not set"
+ )
+-@torch.inference_mode()
+-def test_graph_chain_replay(dist_init, monkeypatch, n, graph_kind, capture_metadata):
+-    """A Prefill capture must not bake fusion into later Mixed/Decode replays."""
+-    from vllm.compilation.breakable_cudagraph import (
+-        BreakableCUDAGraphCapture,
+-        BreakableCUDAGraphWrapper,
+-    )
+-    from vllm.compilation.cuda_graph import CUDAGraphWrapper
+-    from vllm.config import VllmConfig
+-    from vllm.forward_context import BatchDescriptor
+-
+-    monkeypatch.setenv("VLLM_USE_BREAKABLE_CUDAGRAPH", "1")
+-    layers = make_layers()
+-    positions = torch.arange(n, device="cuda")
+-    x = make_case(n, 6144, torch.bfloat16)[1]
+-    mode = CUDAGraphMode.FULL if graph_kind == "full" else CUDAGraphMode.PIECEWISE
+-    ctx = context(n)
+-    ctx.cudagraph_runtime_mode = mode
+-    ctx.batch_descriptor = BatchDescriptor(num_tokens=n)
+-    metadata = ctx.attn_metadata["attn"]
+-    ctx.attn_metadata = (
+-        {f"attn{i}": metadata for i in range(3)} if capture_metadata else None
+-    )
+-    calls = []
+-    original = hy4.triton_ihc_post_pre
+-
+-    def fused(*args):
+-        calls.append(True)
+-        return original(*args)
+-
+-    monkeypatch.setattr(hy4, "triton_ihc_post_pre", fused)
+-    if graph_kind == "breakable":
+-
+-        def attention(positions, hidden_states):
+-            out = torch.empty_like(hidden_states)
+-
+-            def run():
+-                torch.tanh(hidden_states, out=out)
+-
+-            cap = BreakableCUDAGraphCapture.current()
+-            if cap is not None:
+-                cap.add_eager(run)
+-            else:
+-                run()
+-            return out
+-
+-        for layer in layers:
+-            monkeypatch.setattr(layer.self_attn, "forward", attention)
+-
+-    def set_mode(enabled):
+-        for i, layer in enumerate(layers):
+-            layer._ihc_fusion_enabled = enabled
+-            layer._ihc_defer_post = enabled and i < 2
+-
+-    def forward(value):
+-        pending = None
+-        for layer in layers:
+-            value, pending = layer(positions, value, pending)
+-        assert pending is None
+-        return value
+-
+-    wrappers = []
+-    with override_forward_context(ctx):
+-        for enabled in (False, True):
+-            set_mode(enabled)
+-            for _ in range(3):
+-                forward(x)
+-            wrapper_cls = (
+-                CUDAGraphWrapper if graph_kind == "full" else BreakableCUDAGraphWrapper
+-            )
+-            wrapper = wrapper_cls(forward, VllmConfig(), runtime_mode=mode)
+-            wrapper.graph_pool = torch.cuda.graph_pool_handle()
+-            stream = torch.cuda.Stream()
+-            stream.wait_stream(torch.cuda.current_stream())
+-            calls.clear()
+-            with torch.cuda.stream(stream):
+-                wrapper(x)
+-            torch.cuda.current_stream().wait_stream(stream)
+-            assert not calls
+-            wrappers.append(wrapper)
+-
+-        previous = None
+-        for step, kind in enumerate(("prefill", "mixed", "padding", "decode")):
+-            x.copy_(torch.roll(x, 1, 0).neg() * (0.9 + 0.01 * step))
+-            metadata = context(n, kind).attn_metadata["attn"]
+-            ctx.attn_metadata = {f"attn{i}": metadata for i in range(3)}
+-            off, on = (wrapper(x).clone() for wrapper in wrappers)
+-            assert not calls
+-            assert previous is None or not torch.equal(on, previous)
+-            previous = on
+-            torch.testing.assert_close(
+-                on, off, rtol=2 * torch.finfo(torch.bfloat16).eps, atol=2e-5
+-            )
+-            torch.testing.assert_close(on, off, rtol=0, atol=0)
+-            torch.testing.assert_close(wrappers[1](x), on, rtol=0, atol=0)
+-            ctx.cudagraph_runtime_mode = CUDAGraphMode.NONE
+-            set_mode(False)
+-            torch.testing.assert_close(on, forward(x), rtol=0, atol=0)
+-            set_mode(True)
+-            ctx.cudagraph_runtime_mode = mode
+-
+-        with torch.profiler.profile(
+-            activities=[
+-                torch.profiler.ProfilerActivity.CPU,
+-                torch.profiler.ProfilerActivity.CUDA,
+-            ]
+-        ) as prof:
+-            wrappers[1](x)
+-            torch.accelerator.synchronize()
+-        names = [
+-            e.name
+-            for e in prof.events()
+-            if e.device_type == torch.autograd.DeviceType.CUDA
+-        ]
+-        assert not any("_fused_post_pre" in name for name in names), names
+-        for kernel in ("_ihc_pre_stage1", "_ihc_pre_stage2", "_ihc_post_kernel"):
+-            assert sum(kernel in name for name in names) == 6, names
++def test_full_hy4_hidden_metrics(vllm_runner):
++    checkpoint = os.environ["HY4_FULL_CHECKPOINT"]
++    tp = int(os.getenv("HY4_FULL_TP", "8"))
++    tokens = int(os.getenv("HY4_FULL_TOKENS", "128"))
++    original = _full_hy4_hidden(vllm_runner, checkpoint, False, tp, tokens)
++    fused = _full_hy4_hidden(vllm_runner, checkpoint, True, tp, tokens)
++    result = {str(layer): metric(fused[layer], original[layer]) for layer in original}
++    print(json.dumps({"layers": len(result), "hidden": result}))
+diff --git a/vllm/models/hy_v4/nvidia/model.py b/vllm/models/hy_v4/nvidia/model.py
+index ce82d442fe..0961912e03 100644
+--- a/vllm/models/hy_v4/nvidia/model.py
++++ b/vllm/models/hy_v4/nvidia/model.py
+@@ -33,15 +33,13 @@ from torch import nn
+ from transformers import PreTrainedConfig
+ 
+ from vllm import envs
+-from vllm.config import CacheConfig, CUDAGraphMode, VllmConfig
++from vllm.config import CacheConfig, VllmConfig
+ from vllm.distributed import (
+     get_pp_group,
+     get_tensor_model_parallel_rank,
+     get_tensor_model_parallel_world_size,
+ )
+-from vllm.forward_context import get_forward_context, is_forward_context_available
+ from vllm.logger import init_logger
+-from vllm.model_executor.layers.attention.mla_attention import MLACommonMetadata
+ from vllm.model_executor.layers.fused_moe import fused_moe_make_expert_params_mapping
+ from vllm.model_executor.layers.layernorm import RMSNorm
+ from vllm.model_executor.layers.logits_processor import LogitsProcessor
+@@ -202,13 +200,14 @@ class HYV4DecoderLayer(nn.Module):
+         return hidden_states, residual
+ 
+     def _can_fuse_ihc(self, x, residual, post_gates, pre):
+-        if (
++        return (
+             self._ihc_fusion_enabled
+-            and not torch.compiler.is_compiling()
+-            and 512 <= x.shape[0] <= 8192
+-            and x.shape[1:] == (6144,)
+-            and residual.shape == (x.shape[0], 4, 6144)
+-            and post_gates.shape == (x.shape[0], 4)
++            and x.dim() == 2
++            and residual.dim() == 3
++            and post_gates.dim() == 2
++            and residual.shape[0] == x.shape[0]
++            and residual.shape[1] == post_gates.shape[1] == 4
++            and residual.shape[2] == x.shape[1]
+             and x.dtype == residual.dtype == torch.bfloat16
+             and all(
+                 t.is_cuda and t.device == x.device and t.is_contiguous()
+@@ -225,33 +224,14 @@ class HYV4DecoderLayer(nn.Module):
+                 t.dtype == torch.float32
+                 for t in (post_gates, pre.hc_fn.weight, pre.hc_scale, pre.hc_base)
+             )
+-            and is_forward_context_available()
+-        ):
+-            context = get_forward_context()
+-            if context.ubatch_slices is not None:
+-                return False
+-            if context.cudagraph_runtime_mode != CUDAGraphMode.NONE:
+-                # Graph keys cannot guarantee unpadded, pure Prefill on replay.
+-                # Capture-time metadata must not enable fusion for a shared key.
+-                return False
+-            metadata = context.attn_metadata
+-            attn = (
+-                metadata.get(self.self_attn.mla_attn.layer_name)
+-                if isinstance(metadata, dict)
+-                else None
+-            )
+-            # Reject unknown batches and padding; only CPU metadata is read.
+-            if (
+-                isinstance(attn, MLACommonMetadata)
+-                and attn.num_prefills > 0
+-                and attn.num_actual_tokens == x.shape[0]
+-            ):
+-                return True
+-        return False
++        )
+ 
+     def _ihc_post_pre(self, x, residual, post_gates, *, pre_attention=False):
+         pre_layer = self.hc_attn_layer if pre_attention else self.hc_mlp_layer
+         pre = pre_layer.hc_pre
++        norm_layer = (
++            self.input_layernorm if pre_attention else self.post_attention_layernorm
++        )
+         if self._can_fuse_ihc(x, residual, post_gates, pre):
+             output, updated, post = triton_ihc_post_pre(
+                 x,
+@@ -263,13 +243,16 @@ class HYV4DecoderLayer(nn.Module):
+                 pre.magnitude,
+                 pre.hc_eps,
+                 pre.layernorm_epsilon,
++                norm_layer.weight,
++                norm_layer.variance_epsilon,
+             )
+             return output, post, updated
+         # Post has no layer parameters; pending gates belong to the predecessor.
+         post_layer = self.hc_mlp_layer if pre_attention else self.hc_attn_layer
+         updated = post_layer.post(x, residual, post_gates)
+         updated = pre_layer.prepare_input(updated)
+-        return pre_layer.pre(updated)
++        output, post, updated = pre_layer.pre(updated)
++        return norm_layer(output), post, updated
+ 
+     def _forward_ihc(
+         self,
+@@ -281,11 +264,11 @@ class HYV4DecoderLayer(nn.Module):
+         if pending is None:
+             hidden_states = self.hc_attn_layer.prepare_input(hidden_states)
+             hidden_states, post_gates, residual = self.hc_attn_layer.pre(hidden_states)
++            hidden_states = self.input_layernorm(hidden_states)
+         else:
+             hidden_states, post_gates, residual = self._ihc_post_pre(
+                 hidden_states, *pending, pre_attention=True
+             )
+-        hidden_states = self.input_layernorm(hidden_states)
+         hidden_states = self.self_attn(
+             positions=positions,
+             hidden_states=hidden_states,
+@@ -293,7 +276,6 @@ class HYV4DecoderLayer(nn.Module):
+         hidden_states, post_gates, residual = self._ihc_post_pre(
+             hidden_states, residual, post_gates
+         )
+-        hidden_states = self.post_attention_layernorm(hidden_states)
+         hidden_states = self.mlp(hidden_states)
+         if self._ihc_defer_post and self._can_fuse_ihc(
+             hidden_states, residual, post_gates, self.hc_mlp_layer.hc_pre
+diff --git a/vllm/models/hy_v4/nvidia/triton_ihc_post_pre.py b/vllm/models/hy_v4/nvidia/triton_ihc_post_pre.py
+index 73658b6be1..2d2a0220ce 100644
+--- a/vllm/models/hy_v4/nvidia/triton_ihc_post_pre.py
++++ b/vllm/models/hy_v4/nvidia/triton_ihc_post_pre.py
+@@ -1,12 +1,23 @@
+ # SPDX-License-Identifier: Apache-2.0
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+-"""HY4 C=4 Post + next Pre, promoted from the frozen Lab implementation."""
++"""HY4 C=4 Post + next Pre + RMSNorm fusion."""
+ 
+ import torch
+ 
+ from vllm.triton_utils import tl, triton
+ 
++_IHC_AUTOTUNE_CONFIGS = [
++    triton.Config({}, num_warps=4, num_stages=1),
++    triton.Config({}, num_warps=4, num_stages=2),
++    triton.Config({}, num_warps=4, num_stages=3),
++]
+ 
++
++@triton.autotune(
++    configs=_IHC_AUTOTUNE_CONFIGS,
++    key=["N", "D"],
++    cache_results=True,
++)
+ @triton.jit
+ def _fused_post_pre(
+     x_ptr,
+@@ -18,11 +29,14 @@ def _fused_post_pre(
+     output_ptr,
+     updated_ptr,
+     next_post_ptr,
++    rms_weight_ptr,
++    N: tl.constexpr,
+     D: tl.constexpr,
+     BLOCK_D: tl.constexpr,
+     MAGNITUDE: tl.constexpr,
+     HC_EPS: tl.constexpr,
+     NORM_EPS: tl.constexpr,
++    RMS_EPS: tl.constexpr,
+ ):
+     token = tl.program_id(0).to(tl.int64)
+     lanes = tl.arange(0, 1024)
+@@ -68,6 +82,9 @@ def _fused_post_pre(
+         rounded = (previous * x_out + residual).to(updated_ptr.dtype.element_ty)
+         gate = tl.sum(tl.where(channels == row, pre, 0.0), 0)
+         output += gate * rounded.to(tl.float32)
++    output_rms = tl.rsqrt(tl.sum(output * output, 0) / D + RMS_EPS)
++    rms_weight = tl.load(rms_weight_ptr + d, mask=d < D, other=0).to(tl.float32)
++    output = output * output_rms * rms_weight
+     tl.store(output_ptr + token * D + d, output, mask=d < D)
+ 
+ 
+@@ -81,11 +98,13 @@ def triton_ihc_post_pre(
+     magnitude: float,
+     hc_eps: float,
+     norm_eps: float,
++    rms_weight: torch.Tensor,
++    rms_eps: float,
+ ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+-    """Return next input, rounded residual and next gates for eligible HY4 inputs.
++    """Return RMS-normalized next input, rounded residual and next gates.
+ 
+     Previous gates belong to Attention; projection parameters belong to MLP.
+-    The caller checks contiguous BF16 [N,6144]/[N,4,6144] and FP32 parameters.
++    The caller provides contiguous BF16 activations and FP32 parameters.
+     """
+     output = torch.empty_like(x)
+     updated = torch.empty_like(residual)
+@@ -100,12 +119,14 @@ def triton_ihc_post_pre(
+         output,
+         updated,
+         post,
++        rms_weight,
++        N=x.shape[0],
+         D=x.shape[1],
+         BLOCK_D=triton.next_power_of_2(x.shape[1]),
+         MAGNITUDE=magnitude,
+         HC_EPS=hc_eps,
+         NORM_EPS=norm_eps,
+-        num_warps=4,
++        RMS_EPS=rms_eps,
+         enable_fp_fusion=False,
+     )
+     return output, updated, post

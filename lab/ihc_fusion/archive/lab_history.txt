@@ -1,0 +1,10 @@
+4fc3e26c5430fb0b12e887370a731f52819c5d2c 2026-10-21T06:22:18+00:00 feat(ihc): establish fused post-pre lab baseline
+078c5c6fa01258079ea508d526535b4a7cd15429 2026-10-21T06:52:38+00:00 feat(ihc): add Triton fused PostPre kernels and benchmarks
+ad3e62549ad5948df493dd4f8b0506cf236bb960 2026-10-21T15:26:58+00:00 feat(hy4): integrate eager iHC PostPre fusion with shape routing
+223ebbf62d906e8bb3a5c017d8ae9c3fcbd98868 2026-10-22T01:28:50+00:00 feat(hy4): add iHC intra- and cross-layer post-pre fusion
+39d97b877dc232df9e348735724c8e9013bfd160 2026-10-22T04:35:51+00:00 chore(ihc): ignore generated validation caches
+980dd6a630b7030f7d72fedd2cdae850a053bb12 2026-10-22T04:36:24+00:00 fix(ihc): restore hidden-size filter in decode benchmark
+7386da7e8a4f42a54c18c8e89342be55caeaf49b 2026-10-22T04:36:32+00:00 test(ihc): add TP4 validation tooling
+5ad14ba888f25709bd9f2751a6b697383a31a33b 2026-10-22T04:36:39+00:00 test(ihc): add scope, timing and prefill benchmarks
+e155d86fa9f245f1bc10d719adb43a0c8765dbc6 2026-10-22T04:37:28+00:00 docs(ihc): record TP4 N8192 validation results
+da9bc79158e82dc7777ceb9c3c425bd2c836e22c 2026-10-22T04:37:49+00:00 docs(ihc): record prefill selection study

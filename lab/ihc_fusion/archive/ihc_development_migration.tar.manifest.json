@@ -1,0 +1,187 @@
+{
+  "commit": "79447ce5f9c7dd3cf7fc3b1ede29c8f3d8e0f60d",
+  "archive": "ihc_development_migration.tar.gz",
+  "archive_sha256": "ca90d7d07a427669d6d2a484a8db33f9a8326a741e407246a3396273042006c6",
+  "files": [
+    {
+      "path": "ihc_development_migration/lab/ihc_fusion/README.md",
+      "bytes": 4872,
+      "sha256": "a311bf0535b1b25b2710b9929d5533ea0e8d818b4cff46137e3d5f9220546f5e"
+    },
+    {
+      "path": "ihc_development_migration/lab/ihc_fusion/__init__.py",
+      "bytes": 107,
+      "sha256": "e3c55cbb0d7a8bd47df6f3378835644645f5d3bc89b45793b5d5a02d013e5c58"
+    },
+    {
+      "path": "ihc_development_migration/lab/ihc_fusion/baselines/__init__.py",
+      "bytes": 107,
+      "sha256": "e3c55cbb0d7a8bd47df6f3378835644645f5d3bc89b45793b5d5a02d013e5c58"
+    },
+    {
+      "path": "ihc_development_migration/lab/ihc_fusion/baselines/official.py",
+      "bytes": 5065,
+      "sha256": "321a76c6861bf9ba8461b3c8eb1c99def46347f28fbaf74a1aa9db6e941983ba"
+    },
+    {
+      "path": "ihc_development_migration/lab/ihc_fusion/benchmarks/__init__.py",
+      "bytes": 107,
+      "sha256": "e3c55cbb0d7a8bd47df6f3378835644645f5d3bc89b45793b5d5a02d013e5c58"
+    },
+    {
+      "path": "ihc_development_migration/lab/ihc_fusion/benchmarks/audit_baseline_scope.py",
+      "bytes": 13011,
+      "sha256": "73e233234d580083c23edec527c0e43ef6f4dc57de59ea8284546d1d99fc64cd"
+    },
+    {
+      "path": "ihc_development_migration/lab/ihc_fusion/benchmarks/audit_postpre_timing.py",
+      "bytes": 14847,
+      "sha256": "e1519f181b68c6d22ef2400c93f5ccfb652a6c73f4eda605a8d48ae7d549dab6"
+    },
+    {
+      "path": "ihc_development_migration/lab/ihc_fusion/benchmarks/bench_decode_two_stage.py",
+      "bytes": 9871,
+      "sha256": "93916b2c77f456537d847184506044a1aae7cdbd1970f823559fb8f82631921e"
+    },
+    {
+      "path": "ihc_development_migration/lab/ihc_fusion/benchmarks/bench_post_pre.py",
+      "bytes": 12358,
+      "sha256": "049464ff797fa11d4af80ef923ab4f970a67a07f5a606173f55c7785c5a91661"
+    },
+    {
+      "path": "ihc_development_migration/lab/ihc_fusion/benchmarks/bench_prefill_selection.py",
+      "bytes": 5101,
+      "sha256": "215b15c2c137cdf8a6125a97603543968089c253f2d69a622490303fa5f97f5a"
+    },
+    {
+      "path": "ihc_development_migration/lab/ihc_fusion/benchmarks/tp4_validation/analyze_perf.py",
+      "bytes": 7067,
+      "sha256": "1275c1ffce3aeb916b7a196dd1e18da48a085223713023c9657049c97dbfd0e2"
+    },
+    {
+      "path": "ihc_development_migration/lab/ihc_fusion/benchmarks/tp4_validation/benchmark.py",
+      "bytes": 5462,
+      "sha256": "5cafdd8810802dee2633af17c18877359fa101676a66f64f51fbddea928e0060"
+    },
+    {
+      "path": "ihc_development_migration/lab/ihc_fusion/benchmarks/tp4_validation/inspect_environment.py",
+      "bytes": 4534,
+      "sha256": "b4e416f181922fab7903ca68b7625694f16a836ef8373ad46a7027369c03a3fe"
+    },
+    {
+      "path": "ihc_development_migration/lab/ihc_fusion/benchmarks/tp4_validation/perf_workers.py",
+      "bytes": 4969,
+      "sha256": "5f58673ffcd56b934ee63f8c67f28e8fe27fcb98d0533895a31e6bbf4f9780d3"
+    },
+    {
+      "path": "ihc_development_migration/lab/ihc_fusion/benchmarks/tp4_validation/run.sh",
+      "bytes": 833,
+      "sha256": "d586b421e2cb23cd9fca1639c01e62490d67fb2dc9a301db3cd5783b6df80392"
+    },
+    {
+      "path": "ihc_development_migration/lab/ihc_fusion/benchmarks/tp4_validation/validate.py",
+      "bytes": 5008,
+      "sha256": "88601523ba8f1b427d15d8f61aef3e217c9955bae6b1c5f63f3deb63cfc5cbdf"
+    },
+    {
+      "path": "ihc_development_migration/lab/ihc_fusion/benchmarks/tp4_validation/workers.py",
+      "bytes": 4918,
+      "sha256": "d810cf4fa9f65fa08ad1e4e7ac664ff53f60fab07960b23be73d13ffa4cec3b2"
+    },
+    {
+      "path": "ihc_development_migration/lab/ihc_fusion/kernels/__init__.py",
+      "bytes": 107,
+      "sha256": "e3c55cbb0d7a8bd47df6f3378835644645f5d3bc89b45793b5d5a02d013e5c58"
+    },
+    {
+      "path": "ihc_development_migration/lab/ihc_fusion/kernels/decode_two_stage.py",
+      "bytes": 3790,
+      "sha256": "265307c38db7f1ce3248a78f497eedf9d5dcae767b22ac6760a6338665dca991"
+    },
+    {
+      "path": "ihc_development_migration/lab/ihc_fusion/kernels/fused_post_pre.py",
+      "bytes": 9278,
+      "sha256": "69a1bc35e21313782d3942b66d2b8602c6fe9f8051893c0568fb9ef7939b0f3e"
+    },
+    {
+      "path": "ihc_development_migration/lab/ihc_fusion/reference/__init__.py",
+      "bytes": 107,
+      "sha256": "e3c55cbb0d7a8bd47df6f3378835644645f5d3bc89b45793b5d5a02d013e5c58"
+    },
+    {
+      "path": "ihc_development_migration/lab/ihc_fusion/reference/torch_post_pre.py",
+      "bytes": 1150,
+      "sha256": "f862292d7b8a9e58978a863aee8143433486916c9363b8c2cf7218517a526fe4"
+    },
+    {
+      "path": "ihc_development_migration/lab/ihc_fusion/tests/__init__.py",
+      "bytes": 107,
+      "sha256": "e3c55cbb0d7a8bd47df6f3378835644645f5d3bc89b45793b5d5a02d013e5c58"
+    },
+    {
+      "path": "ihc_development_migration/lab/ihc_fusion/tests/cases.py",
+      "bytes": 3983,
+      "sha256": "bb84f6bd6a142fd7f1156f56639165923fbd4e93923f70e78e2c259a6d4588f6"
+    },
+    {
+      "path": "ihc_development_migration/lab/ihc_fusion/tests/test_decode_two_stage.py",
+      "bytes": 2445,
+      "sha256": "68f9dea05a5c47683f08f344304b4185620465bc2b4dc59555f4490c9321b452"
+    },
+    {
+      "path": "ihc_development_migration/lab/ihc_fusion/tests/test_post_pre.py",
+      "bytes": 6328,
+      "sha256": "deb3c15806577e9ef71c9b7f3308807f97d8d831411bfc7c8eab1d18dfed3740"
+    },
+    {
+      "path": "ihc_development_migration/lab/ihc_fusion/tests/test_prefill_workload.py",
+      "bytes": 1360,
+      "sha256": "da50e0ff938ccf964e067263ee8b451ce754611537a4e8ab8900364bc5281ca9"
+    },
+    {
+      "path": "ihc_development_migration/vllm/models/hy_v4/nvidia/__init__.py",
+      "bytes": 107,
+      "sha256": "e3c55cbb0d7a8bd47df6f3378835644645f5d3bc89b45793b5d5a02d013e5c58"
+    },
+    {
+      "path": "ihc_development_migration/vllm/models/hy_v4/nvidia/attention.py",
+      "bytes": 31657,
+      "sha256": "3abcd82a94ed8b2374518d7ce755f0f416a3766f52293705979176207b170c6e"
+    },
+    {
+      "path": "ihc_development_migration/vllm/models/hy_v4/nvidia/flashmla_sparse.py",
+      "bytes": 11266,
+      "sha256": "5281476dfcc1f1e3b0bb65a37ea5a11e166bdeb3cc8df3e005cd0bd7120f4afc"
+    },
+    {
+      "path": "ihc_development_migration/vllm/models/hy_v4/nvidia/hc.py",
+      "bytes": 13721,
+      "sha256": "742fb87af9d74a53de1b94238c58f7d96e8e11830691d8d9a5fbcad42033d1ca"
+    },
+    {
+      "path": "ihc_development_migration/vllm/models/hy_v4/nvidia/model.py",
+      "bytes": 34904,
+      "sha256": "484473269c4957b2451fd71218c5e6de95d21512bfb275ba017335a34a4dee8a"
+    },
+    {
+      "path": "ihc_development_migration/vllm/models/hy_v4/nvidia/moe.py",
+      "bytes": 7193,
+      "sha256": "b1ee3655793c64184d8c924cc0943090353db5fb9f2c9440e9fdf5a5263ed0e8"
+    },
+    {
+      "path": "ihc_development_migration/vllm/models/hy_v4/nvidia/mtp.py",
+      "bytes": 37903,
+      "sha256": "106bdc85443bafcf6213bec575842b53d704fdc2299c6a6d22a0dadef0d031d3"
+    },
+    {
+      "path": "ihc_development_migration/vllm/models/hy_v4/nvidia/triton_ihc.py",
+      "bytes": 9458,
+      "sha256": "9765c65453dd2d1b9828e82790ece36a304c7c8f6f54229b146cbfdbd5e9094a"
+    },
+    {
+      "path": "ihc_development_migration/vllm/models/hy_v4/nvidia/triton_ihc_post_pre.py",
+      "bytes": 3713,
+      "sha256": "1a74e43e259b6fa2bb3826096a43ff705e21609b2ae9bb1c03cf3eff56b686bd"
+    }
+  ]
+}
