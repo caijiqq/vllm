@@ -1,5 +1,7 @@
 # HY4 iHC 融合方案总结
 
+最终代码与本文历史描述的差异见 [复盘勘误](REVIEW.md#代码与旧文档的勘误)。
+
 ## 当前结论
 
 当前 iHC 融合方案可以作为一个阶段性版本固定下来。H100 TP4 的交错 Serving 测试已经证明，融合收益能够从算子和 Forward 层面传递到真实请求；继续调整 Triton 的 warp、stage 和归约块参数，暂时没有为大输入带来额外收益。后续工作应以 H200 全量模型验证和数据集正确性评测为主，不再扩大 iHC 的生产改动范围。
@@ -65,7 +67,7 @@ Triton autotune 当前按 `(D, BLOCK_K)` 选择配置，候选包括4/8 warps和
 
 ## H100 Serving 证据
 
-测试结果保存在 `/tmp/hy4-ihc-rerun-JOWKo8/paired_analysis.json`。测试配置如下：
+测试结果保存在 [归档配对统计](results/serving_h100_tp4_9rounds/paired_analysis.json)（原位置为 `/tmp/hy4-ihc-rerun-JOWKo8/paired_analysis.json`）。测试配置如下：
 
 - H100 TP4；
 - 三层 HY4 FP8 checkpoint；

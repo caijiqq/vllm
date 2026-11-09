@@ -1,5 +1,7 @@
 # HY4 iHC
 
+离线复盘与面试证据入口：[REVIEW.md](REVIEW.md)。包含版本演进、历史快照、原始证据、校验方法和结论边界。
+
 这个目录只保留 iHC 的实现、参考实现和历史结果。正确性验证使用
 `tests/models/test_hyv4_ihc_fusion.py`：
 

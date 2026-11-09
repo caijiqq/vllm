@@ -1,0 +1,109 @@
+{
+  "files": 54,
+  "completed_requests": 3456,
+  "matches_archived_analysis": true,
+  "summary": {
+    "8192": {
+      "median_ttft_ms": {
+        "median_change_pct": -0.8972397683156941,
+        "wins": 6
+      },
+      "p90_ttft_ms": {
+        "median_change_pct": -4.351215289115484,
+        "wins": 7
+      },
+      "p99_ttft_ms": {
+        "median_change_pct": -9.186767349794112,
+        "wins": 7
+      },
+      "median_tpot_ms": {
+        "median_change_pct": -4.5885660518042215,
+        "wins": 8
+      },
+      "p90_tpot_ms": {
+        "median_change_pct": -4.171283778373647,
+        "wins": 6
+      },
+      "p99_tpot_ms": {
+        "median_change_pct": -3.1382345787647314,
+        "wins": 7
+      },
+      "output_throughput": {
+        "median_change_pct": 3.94933483043991,
+        "wins": 8
+      },
+      "request_throughput": {
+        "median_change_pct": 3.94933483043991,
+        "wins": 8
+      }
+    },
+    "16384": {
+      "median_ttft_ms": {
+        "median_change_pct": -4.660237309681992,
+        "wins": 8
+      },
+      "p90_ttft_ms": {
+        "median_change_pct": -6.588983736486376,
+        "wins": 9
+      },
+      "p99_ttft_ms": {
+        "median_change_pct": -4.056650261788553,
+        "wins": 8
+      },
+      "median_tpot_ms": {
+        "median_change_pct": -3.676029342929177,
+        "wins": 9
+      },
+      "p90_tpot_ms": {
+        "median_change_pct": -2.7982436903740915,
+        "wins": 9
+      },
+      "p99_tpot_ms": {
+        "median_change_pct": -2.649542586811804,
+        "wins": 7
+      },
+      "output_throughput": {
+        "median_change_pct": 3.539417164890901,
+        "wins": 9
+      },
+      "request_throughput": {
+        "median_change_pct": 3.539417164890901,
+        "wins": 9
+      }
+    },
+    "32768": {
+      "median_ttft_ms": {
+        "median_change_pct": -12.748102551561946,
+        "wins": 9
+      },
+      "p90_ttft_ms": {
+        "median_change_pct": -5.192337557008219,
+        "wins": 9
+      },
+      "p99_ttft_ms": {
+        "median_change_pct": -6.558303610673432,
+        "wins": 9
+      },
+      "median_tpot_ms": {
+        "median_change_pct": -1.935121948162799,
+        "wins": 9
+      },
+      "p90_tpot_ms": {
+        "median_change_pct": -0.5129156204368379,
+        "wins": 6
+      },
+      "p99_tpot_ms": {
+        "median_change_pct": 1.17280822338095,
+        "wins": 3
+      },
+      "output_throughput": {
+        "median_change_pct": 1.772370462702555,
+        "wins": 9
+      },
+      "request_throughput": {
+        "median_change_pct": 1.772370462702555,
+        "wins": 9
+      }
+    }
+  }
+}

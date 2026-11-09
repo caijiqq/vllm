@@ -1,0 +1,57 @@
+{
+  "commit": "4f1fe69872fa689176703713b33c08f06169a291",
+  "archive": "ihc_final_4f1fe69872_source.tar.gz",
+  "archive_sha256": "e78dd0b7971aeca2669a2aa8abaf4b8a422f221ec876937fd9998d3fc5c42cea",
+  "files": [
+    {
+      "path": "ihc_final_4f1fe69872_source/tests/models/test_hyv4_ihc_fusion.py",
+      "bytes": 7906,
+      "sha256": "53d932441da3e7a59e70353b5201276242efb1ff903b69bf8035c7274c36eaeb"
+    },
+    {
+      "path": "ihc_final_4f1fe69872_source/vllm/models/hy_v4/nvidia/__init__.py",
+      "bytes": 107,
+      "sha256": "e3c55cbb0d7a8bd47df6f3378835644645f5d3bc89b45793b5d5a02d013e5c58"
+    },
+    {
+      "path": "ihc_final_4f1fe69872_source/vllm/models/hy_v4/nvidia/attention.py",
+      "bytes": 31657,
+      "sha256": "3abcd82a94ed8b2374518d7ce755f0f416a3766f52293705979176207b170c6e"
+    },
+    {
+      "path": "ihc_final_4f1fe69872_source/vllm/models/hy_v4/nvidia/flashmla_sparse.py",
+      "bytes": 11266,
+      "sha256": "5281476dfcc1f1e3b0bb65a37ea5a11e166bdeb3cc8df3e005cd0bd7120f4afc"
+    },
+    {
+      "path": "ihc_final_4f1fe69872_source/vllm/models/hy_v4/nvidia/hc.py",
+      "bytes": 13721,
+      "sha256": "742fb87af9d74a53de1b94238c58f7d96e8e11830691d8d9a5fbcad42033d1ca"
+    },
+    {
+      "path": "ihc_final_4f1fe69872_source/vllm/models/hy_v4/nvidia/model.py",
+      "bytes": 33960,
+      "sha256": "d4551bdb847c5c414f583cf6e7d35c36138306fe3a37ffe284c58c96d9b87b08"
+    },
+    {
+      "path": "ihc_final_4f1fe69872_source/vllm/models/hy_v4/nvidia/moe.py",
+      "bytes": 7193,
+      "sha256": "b1ee3655793c64184d8c924cc0943090353db5fb9f2c9440e9fdf5a5263ed0e8"
+    },
+    {
+      "path": "ihc_final_4f1fe69872_source/vllm/models/hy_v4/nvidia/mtp.py",
+      "bytes": 37903,
+      "sha256": "106bdc85443bafcf6213bec575842b53d704fdc2299c6a6d22a0dadef0d031d3"
+    },
+    {
+      "path": "ihc_final_4f1fe69872_source/vllm/models/hy_v4/nvidia/triton_ihc.py",
+      "bytes": 9458,
+      "sha256": "9765c65453dd2d1b9828e82790ece36a304c7c8f6f54229b146cbfdbd5e9094a"
+    },
+    {
+      "path": "ihc_final_4f1fe69872_source/vllm/models/hy_v4/nvidia/triton_ihc_post_pre.py",
+      "bytes": 4414,
+      "sha256": "d1556efb2ccbfc4dcc505f78085198cddaf70a8f517444c07d3710125e47b07a"
+    }
+  ]
+}

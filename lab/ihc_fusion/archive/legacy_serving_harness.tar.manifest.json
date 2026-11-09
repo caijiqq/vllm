@@ -1,0 +1,17 @@
+{
+  "source": "pre-existing untracked candidate harness; not the generator of the 54 archived runs",
+  "archive": "legacy_serving_harness.tar.gz",
+  "archive_sha256": "7bad21f3e24161eecf41ebdf082897bcd4ca4df394019b0443180ec29fe5754c",
+  "files": [
+    {
+      "path": "lab/ihc_fusion/benchmarks/serve_ab.sh",
+      "bytes": 10434,
+      "sha256": "72f8e73ca34054e50edc120480ee67c0c1136fd449fd67f668f82af194a92ace"
+    },
+    {
+      "path": "lab/ihc_fusion/benchmarks/serve_ab_results.py",
+      "bytes": 9327,
+      "sha256": "1f4134df96f922483dbe2281cfe94898021ad1e321aa96d174f6153a66ac5306"
+    }
+  ]
+}
