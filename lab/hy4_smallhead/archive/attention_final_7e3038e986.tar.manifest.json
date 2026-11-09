@@ -1,0 +1,122 @@
+{
+  "commit": "7e3038e986f01f492fd6a1c67f9531c202485430",
+  "archive": "attention_final_7e3038e986.tar.gz",
+  "archive_sha256": "1fc1dd2ca8136f659ebacb2a080d8e6f50a93a46f59bb0da90b1a3ec9bafdb14",
+  "files": [
+    {
+      "path": "attention_final_7e3038e986/benchmarks/kernels/benchmark_hy4_smallhead_decode.py",
+      "bytes": 7631,
+      "sha256": "72dedd8f8fa6732aac9ebd3f284ea302f08da03d08142642d9c945471cf69855"
+    },
+    {
+      "path": "attention_final_7e3038e986/lab/hy4_smallhead/ABLATION.md",
+      "bytes": 8850,
+      "sha256": "10c8620c9420e746632599a60e163efd832d10d74e48e78a688321d36a065344"
+    },
+    {
+      "path": "attention_final_7e3038e986/lab/hy4_smallhead/MIXED_BATCH_DECISION.md",
+      "bytes": 7017,
+      "sha256": "b1897adbb2759b6763bbfb98f98d969c709823e57a571f8ee57690236c455b5c"
+    },
+    {
+      "path": "attention_final_7e3038e986/lab/hy4_smallhead/README.md",
+      "bytes": 8925,
+      "sha256": "17344de0c7576f1537831417c75bef2075446575c41c925b06f6bd383302a745"
+    },
+    {
+      "path": "attention_final_7e3038e986/lab/hy4_smallhead/RESULTS.md",
+      "bytes": 18304,
+      "sha256": "49486b6e13f92c03f859962bbaa332aeb4353ed9a61427023481fc95281bb00d"
+    },
+    {
+      "path": "attention_final_7e3038e986/lab/hy4_smallhead/ablation.py",
+      "bytes": 10051,
+      "sha256": "d6992a0b358ea210aaf6702c5dff9b2b4b75f8c63d90036dc72a4011499decea"
+    },
+    {
+      "path": "attention_final_7e3038e986/lab/hy4_smallhead/ablation_kernels.py",
+      "bytes": 7029,
+      "sha256": "78ee92975e596d10dff2f8843e5258ec5bbaeddb104f18fecb2b62367f4ce638"
+    },
+    {
+      "path": "attention_final_7e3038e986/lab/hy4_smallhead/check_plain_triton.py",
+      "bytes": 2150,
+      "sha256": "62cd4e78dced3f8f033a99317ad2b9115830038e89049896b353567ad278540e"
+    },
+    {
+      "path": "attention_final_7e3038e986/lab/hy4_smallhead/profile_decode.py",
+      "bytes": 1195,
+      "sha256": "3c101ad29b85b6920d2c75e0a06db47bf5fe0db58a95bf2d1ae17f3168854d4c"
+    },
+    {
+      "path": "attention_final_7e3038e986/lab/hy4_smallhead/results/h100_bf16_decode.json",
+      "bytes": 1921,
+      "sha256": "29384daea9bd39ea60537572faa3c56662504ebbf65c8c69bbdb7a6e175332d9"
+    },
+    {
+      "path": "attention_final_7e3038e986/lab/hy4_smallhead/results/h100_bf16_large.json",
+      "bytes": 924,
+      "sha256": "887236bd6349407c7333eb75b56e100ed1b6cc2c4cfcdb91c77313cfaf3429ac"
+    },
+    {
+      "path": "attention_final_7e3038e986/lab/hy4_smallhead/results/h100_bf16_ncu.json",
+      "bytes": 3220,
+      "sha256": "2e83344bbfc60bae7f2d6743692e1f9ae1f6a911fc0ae0ba8bf62096915f798b"
+    },
+    {
+      "path": "attention_final_7e3038e986/lab/hy4_smallhead/results/h100_bf16_small.json",
+      "bytes": 1244,
+      "sha256": "e9f76ee2d8f40a209ce1894a736d30e626b350d035a70c3c1e3e8302ce5a4d68"
+    },
+    {
+      "path": "attention_final_7e3038e986/lab/hy4_smallhead/results/h100_gluon_ablation_final.json",
+      "bytes": 40101,
+      "sha256": "acd8336c95c5a414eece9fb5a49b3e27d8aa1601cf19c38adedf38d3876a269f"
+    },
+    {
+      "path": "attention_final_7e3038e986/lab/hy4_smallhead/results/h100_gluon_ablation_ncu.json",
+      "bytes": 7708,
+      "sha256": "37e0abda101672fe9c1e83535fdb821b3be99887d7dce0e076419d0e1ba2e655"
+    },
+    {
+      "path": "attention_final_7e3038e986/lab/hy4_smallhead/results/h100_gluon_ablation_splits.json",
+      "bytes": 42155,
+      "sha256": "cd4f77e02d1090141932001543e0527d3f8562f2a95a9b9c2a3f59e7252dc5c5"
+    },
+    {
+      "path": "attention_final_7e3038e986/lab/hy4_smallhead/results/h100_gluon_ablation_sweep.json",
+      "bytes": 34625,
+      "sha256": "98dfd67dd80db2edcb8e214b626a261ffe32485c2eca4452e30a6a456d0721bb"
+    },
+    {
+      "path": "attention_final_7e3038e986/lab/hy4_smallhead/results/h100_mixed_dispatch.json",
+      "bytes": 5460,
+      "sha256": "e61b271969e2f4cc0b7abe43a4eba8b1689c645660a745c59b4a27fdf7cb1028"
+    },
+    {
+      "path": "attention_final_7e3038e986/lab/hy4_smallhead/results/h100_mixed_dispatch_abc.json",
+      "bytes": 12944,
+      "sha256": "85c0d75795f0900b8b6ef32e5df0586e295219124032093b1473e975286c27f4"
+    },
+    {
+      "path": "attention_final_7e3038e986/lab/hy4_smallhead/results/h100_mixed_execution_audit.json",
+      "bytes": 236671,
+      "sha256": "96f3ac6df1ff955df4271d15692b70bd9bb5d98b448fe38b57875639c20b3a19"
+    },
+    {
+      "path": "attention_final_7e3038e986/tests/kernels/attention/test_flashmla_sparse.py",
+      "bytes": 41807,
+      "sha256": "b3686495c1358cedcd4d1acaf3d2f78f626a053c3265e92418e1541d42dde5f4"
+    },
+    {
+      "path": "attention_final_7e3038e986/vllm/models/hy_v4/nvidia/flashmla_sparse.py",
+      "bytes": 14406,
+      "sha256": "9af357b48b3e9b0b66ce897af95cad46f58e14d1c3af13143e97a4d7b6a9d6c0"
+    },
+    {
+      "path": "attention_final_7e3038e986/vllm/models/hy_v4/nvidia/smallhead_sparse_decode.py",
+      "bytes": 6206,
+      "sha256": "24df48b0f460d84ede31e8fc379b04c16e02efe0a266ede0034e0f4301635fa2"
+    }
+  ]
+}

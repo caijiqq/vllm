@@ -1,5 +1,7 @@
 # HY4 TP8 Triton Sparse MLA Decode
 
+离线复盘与面试证据入口：[REVIEW.md](REVIEW.md)。包含版本演进、历史快照、原始证据、校验方法和结论边界。
+
 ## 基线与参考来源
 
 - 稳定基线：`5df63a7203cdb9328d824a27b682e77c7b9928be`（`v0.32.0`），

@@ -1,0 +1,52 @@
+{
+  "commit": "2a6c5bd721a69971b8471a1a25d4b6680454eae1",
+  "archive": "attention_fp8_2a6c5bd721.tar.gz",
+  "archive_sha256": "089351de55fb35ecce6c9e5ed96da32c755ed6c2f05982e7f4dbcb39809578ef",
+  "files": [
+    {
+      "path": "attention_fp8_2a6c5bd721/benchmarks/kernels/benchmark_hy4_smallhead_decode.py",
+      "bytes": 8299,
+      "sha256": "fc5ac61757f613e77b08619ed7b1183118a61648cd452c9a67d94be03dacd459"
+    },
+    {
+      "path": "attention_fp8_2a6c5bd721/lab/hy4_smallhead/README.md",
+      "bytes": 7649,
+      "sha256": "163c252ee1c1f12b21b8fe917a37b97e035af6875dda3461d45c9f5ec5ef5592"
+    },
+    {
+      "path": "attention_fp8_2a6c5bd721/lab/hy4_smallhead/RESULTS.md",
+      "bytes": 2041,
+      "sha256": "ab29a99e402e0eee6a91da95d9a23223c69337f747699a8a9b6d0f4ab5cc0675"
+    },
+    {
+      "path": "attention_fp8_2a6c5bd721/lab/hy4_smallhead/results/h100_block32.json",
+      "bytes": 4930,
+      "sha256": "1efe0a7b23ebc07e7651f9c9e42966626d242656f7b6953a281b92cad001a573"
+    },
+    {
+      "path": "attention_fp8_2a6c5bd721/lab/hy4_smallhead/results/h100_block64.json",
+      "bytes": 4934,
+      "sha256": "b9f92cd41d426195915f8a622f04489c720ece7bbcc16899a15650c75b8b3ff9"
+    },
+    {
+      "path": "attention_fp8_2a6c5bd721/lab/hy4_smallhead/results/h100_rotating64.json",
+      "bytes": 2344,
+      "sha256": "39a09e23ff27969a65b5cb12b695cf814e121171ef27ecaf1d158313aabf5e36"
+    },
+    {
+      "path": "attention_fp8_2a6c5bd721/tests/kernels/attention/test_flashmla_sparse.py",
+      "bytes": 38925,
+      "sha256": "e5a5a568d841cec8d1ea9133f1a67f219a3aaa87f4941640e96fc0496af9d35a"
+    },
+    {
+      "path": "attention_fp8_2a6c5bd721/vllm/models/hy_v4/nvidia/flashmla_sparse.py",
+      "bytes": 13408,
+      "sha256": "f16aa5df8174d50d7ada913eabb0477ebf1f23ad5c02c95bff9343e5509de929"
+    },
+    {
+      "path": "attention_fp8_2a6c5bd721/vllm/models/hy_v4/nvidia/smallhead_sparse_decode.py",
+      "bytes": 6691,
+      "sha256": "41abec6f602b0648a19e493b38f87593863ed625b3a99947790e6c1fb8571713"
+    }
+  ]
+}

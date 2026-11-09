@@ -1,0 +1,62 @@
+{
+  "commit": "daa54b83bb61f49954d8823a0a3197f448b6e480",
+  "archive": "attention_gluon_snapshot.tar.gz",
+  "archive_sha256": "5f2884e0835021de6ca5abc668a131e46660f838e88e330aaa5fc85f3870cc9f",
+  "files": [
+    {
+      "path": "attention_gluon_snapshot/benchmarks/kernels/benchmark_hy4_smallhead_decode.py",
+      "bytes": 7631,
+      "sha256": "72dedd8f8fa6732aac9ebd3f284ea302f08da03d08142642d9c945471cf69855"
+    },
+    {
+      "path": "attention_gluon_snapshot/lab/hy4_smallhead/README.md",
+      "bytes": 7678,
+      "sha256": "70365f772a4baebc70bda76113a7e4bf51ba45b12dae24f1e8f786913198c622"
+    },
+    {
+      "path": "attention_gluon_snapshot/lab/hy4_smallhead/RESULTS.md",
+      "bytes": 4223,
+      "sha256": "43ad46a6459105cbe723c20d00786252886bdef2bfe7ed34211e3672c6c6b440"
+    },
+    {
+      "path": "attention_gluon_snapshot/lab/hy4_smallhead/profile_decode.py",
+      "bytes": 1195,
+      "sha256": "3c101ad29b85b6920d2c75e0a06db47bf5fe0db58a95bf2d1ae17f3168854d4c"
+    },
+    {
+      "path": "attention_gluon_snapshot/lab/hy4_smallhead/results/h100_bf16_decode.json",
+      "bytes": 1921,
+      "sha256": "29384daea9bd39ea60537572faa3c56662504ebbf65c8c69bbdb7a6e175332d9"
+    },
+    {
+      "path": "attention_gluon_snapshot/lab/hy4_smallhead/results/h100_bf16_large.json",
+      "bytes": 924,
+      "sha256": "887236bd6349407c7333eb75b56e100ed1b6cc2c4cfcdb91c77313cfaf3429ac"
+    },
+    {
+      "path": "attention_gluon_snapshot/lab/hy4_smallhead/results/h100_bf16_ncu.json",
+      "bytes": 3220,
+      "sha256": "2e83344bbfc60bae7f2d6743692e1f9ae1f6a911fc0ae0ba8bf62096915f798b"
+    },
+    {
+      "path": "attention_gluon_snapshot/lab/hy4_smallhead/results/h100_bf16_small.json",
+      "bytes": 1244,
+      "sha256": "e9f76ee2d8f40a209ce1894a736d30e626b350d035a70c3c1e3e8302ce5a4d68"
+    },
+    {
+      "path": "attention_gluon_snapshot/tests/kernels/attention/test_flashmla_sparse.py",
+      "bytes": 39958,
+      "sha256": "834c99c09f395a162e066659526e9081764dca08dfa16a5230cd6a1b926c2258"
+    },
+    {
+      "path": "attention_gluon_snapshot/vllm/models/hy_v4/nvidia/flashmla_sparse.py",
+      "bytes": 14406,
+      "sha256": "9af357b48b3e9b0b66ce897af95cad46f58e14d1c3af13143e97a4d7b6a9d6c0"
+    },
+    {
+      "path": "attention_gluon_snapshot/vllm/models/hy_v4/nvidia/smallhead_sparse_decode.py",
+      "bytes": 8066,
+      "sha256": "619cc6d3effeed1adac8499f62ebc22222627f569e6e3ff6727eb047683d7a22"
+    }
+  ]
+}

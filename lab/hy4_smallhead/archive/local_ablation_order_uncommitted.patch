@@ -1,0 +1,17 @@
+diff --git a/lab/hy4_smallhead/ablation.py b/lab/hy4_smallhead/ablation.py
+index a0867a1ec0..f9704f5e6b 100644
+--- a/lab/hy4_smallhead/ablation.py
++++ b/lab/hy4_smallhead/ablation.py
+@@ -173,9 +173,9 @@ def main():
+                 runtime.cudaProfilerStop()
+             else:
+                 for round_id in range(args.rounds):
+-                    order = args.variants[round_id:] + args.variants[:round_id]
+-                    if round_id % 2:
+-                        order = order[::-1]
++                    order = (
++                        args.variants if round_id % 2 == 0 else args.variants[::-1]
++                    )
+                     for name in order:
+                         for merge, key in [
+                             (True, "total_samples_us"),
